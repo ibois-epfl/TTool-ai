@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  control_api:
+    build: ./src/controlservice
+    ports:
+      - "8000:8000"
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    volumes:
+      - ./src/controlservice:/media/train_videos/
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  postgres:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+
+    volumes:
+      - /media/18TB_ibois_stock/postgresql/data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: "rabbitmq:management"
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    env_file:
+      - .env
