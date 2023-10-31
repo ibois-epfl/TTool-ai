@@ -1,24 +1,65 @@
+import os
+
 import celery
 import fastapi
+import psycopg2
 from pydantic import BaseModel
 
 import worker
+
+postgres_url = os.environ.get("POSTGRES_URL")
+conn = psycopg2.connect(postgres_url)
+curs = conn.cursor()
+tables = []
+curs.execute(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+)
+for table in curs.fetchall():
+    tables.append(table)
+if "trainings" not in tables:
+    curs.execute(
+        """CREATE TABLE trainings (training_id varchar(255), max_epochs int,
+        batch_size int, datasets varchar(255), log_dir varchar(255),
+        weights_path varchar(255), celery_task_id varchar(255))"""
+    )
 
 
 class TrainingParams(BaseModel):
     max_epochs: int = 45
     batch_size: int = 90
-    training_data: tuple = ()
-    validation_data: tuple = ()
+    data: tuple = ()
+
+    def __hash__(self):
+        return hash((self.max_epochs, self.batch_size, *self.data))
 
 
 app = fastapi.FastAPI()
 
 
+@app.get("/trainings")
+def get_list_of_traingins():
+    curs.execute(
+        """SELECT training_id, datasets, batch_size,
+            max_epochs FROM trainings"""
+    )
+    results = curs.fetchall()
+    print(results)
+    return fastapi.responses.JSONResponse(results)
+
+
 @app.post("/trainings", status_code=201)
 def train(training_params: TrainingParams):
     task = worker.train.delay(**dict(training_params))
-    return fastapi.responses.JSONResponse({"training_id": task.id})
+    training_id = hash(training_params)
+    max_epochs = training_params.max_epochs
+    batch_size = training_params.batch_size
+    # data = str(training_params.data)
+    curs.execute(
+        f"""INSERT INTO trainings (training_id, max_epochs, batch_size,
+        celery_task_id) VALUES ({training_id}, {max_epochs}, {batch_size},
+        '{task.id}')"""
+    )
+    return fastapi.responses.JSONResponse({"training_id": training_id})
 
 
 @app.get("/trainings/{task_id}")

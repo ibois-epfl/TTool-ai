@@ -13,3 +13,4 @@ pandas==2.0.2
 tqdm==4.65.0
 torchvision==0.15.2
 scikit-image==0.21.0
+psycopg2-binary
