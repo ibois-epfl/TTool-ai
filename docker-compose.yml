@@ -8,38 +8,80 @@ services:
       - 8004:8000
     command: uvicorn main:app --host 0.0.0.0 --reload
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis_training:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_training:6379/0
       - POSTGRES_URL=postgres://postgres:12345@postgres:5432/postgres
     depends_on:
-      - redis
+      - redis_training
       - postgres
 
   training_worker:
     build: ./src/trainingservice
     command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis_training:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_training:6379/0
     depends_on:
       - training_api
-      - redis
+      - redis_training
 
-  redis:
+  dataset_api:
+    build: ./src/datasetservice
+    ports:
+      - 8005:8000
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    environment:
+      - CELERY_BROKER_URL=redis://redis_dataset:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_dataset:6379/0
+      - POSTGRES_URL=postgres://postgres:12345@postgres:5432/postgres
+      - DATA_DIR=/data_dir
+    volumes:
+      - /home/aymanns/projects/ENAC_augmented_carpentry/ttool-classifier-app/data_dir:/data_dir
+    depends_on:
+      - redis_dataset
+      - postgres
+
+  dataset_worker:
+    build: ./src/datasetservice
+    command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log
+    environment:
+      - CELERY_BROKER_URL=redis://redis_dataset:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_dataset:6379/0
+    depends_on:
+      - dataset_api
+      - redis_dataset
+
+  redis_training:
     image: redis:7
 
-  dashboard:
+  redis_dataset:
+    image: redis:7
+
+  dashboard_training:
     build: ./src/dashboardservice
-    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    command: celery --broker=redis://redis_training:6379/0 flower --port=5555
     ports:
       - 5556:5555
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis_dataset:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_dataset:6379/0
     depends_on:
       - training_api
       - training_worker
-      - redis
+      - redis_training
+
+  dashboard_dataset:
+    build: ./src/dashboardservice
+    command: celery --broker=redis://redis_dataset:6379/0 flower --port=5555
+    ports:
+      - 5557:5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis_dataset:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis_dataset:6379/0
+    depends_on:
+      - dataset_api
+      - dataset_worker
+      - redis_dataset
 
   postgres:
     image: postgres:latest
