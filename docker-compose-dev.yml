@@ -14,6 +14,7 @@ services:
 
   postgres:
     image: postgres:latest
+    restart: always
     ports:
       - "5432:5432"
     env_file:
@@ -24,6 +25,7 @@ services:
 
   rabbitmq:
     image: "rabbitmq:management"
+    restart: always
     ports:
       - "15672:15672"
       - "5672:5672"
