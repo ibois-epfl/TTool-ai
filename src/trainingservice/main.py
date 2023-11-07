@@ -15,13 +15,15 @@ curs.execute(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
 )
 for table in curs.fetchall():
-    tables.append(table)
+    tables.append(table[0])
 if "trainings" not in tables:
     curs.execute(
         """CREATE TABLE trainings (training_id varchar(255), max_epochs int,
         batch_size int, datasets varchar(255), log_dir varchar(255),
         weights_path varchar(255), celery_task_id varchar(255))"""
     )
+curs.close()
+conn.commit()
 
 
 class TrainingParams(BaseModel):
@@ -38,11 +40,13 @@ app = fastapi.FastAPI()
 
 @app.get("/trainings")
 def get_list_of_traingins():
+    curs = conn.cursor()
     curs.execute(
         """SELECT training_id, datasets, batch_size,
             max_epochs FROM trainings"""
     )
     results = curs.fetchall()
+    curs.close()
     print(results)
     return fastapi.responses.JSONResponse(results)
 
@@ -54,11 +58,14 @@ def train(training_params: TrainingParams):
     max_epochs = training_params.max_epochs
     batch_size = training_params.batch_size
     # data = str(training_params.data)
+    curs = conn.cursor()
     curs.execute(
         f"""INSERT INTO trainings (training_id, max_epochs, batch_size,
         celery_task_id) VALUES ({training_id}, {max_epochs}, {batch_size},
         '{task.id}')"""
     )
+    curs.close()
+    conn.commit()
     return fastapi.responses.JSONResponse({"training_id": training_id})
 
 
