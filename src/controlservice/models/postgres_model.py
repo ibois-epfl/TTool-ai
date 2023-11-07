@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Enum
 from config.postgres_config import Base
 
 
-class VideoStatus(str, Enum):
+class DataLoaderStatus(str, Enum):
     PENDING = 'pending'
     PROCESSING = 'processing'
     COMPLETED = 'completed'
@@ -15,7 +15,7 @@ class VideoDB(Base):
     label = Column(String)
     video_path = Column(String)
     video_hash = Column(String)
-    upload_status = VideoStatus.PENDING
+    upload_status = DataLoaderStatus.PENDING
 
 
 
