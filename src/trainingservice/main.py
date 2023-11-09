@@ -1,14 +1,25 @@
 import os
 
-import celery
 import fastapi
 import psycopg2
 from pydantic import BaseModel
 
 import worker
 
-postgres_url = os.environ.get("POSTGRES_URL")
-conn = psycopg2.connect(postgres_url)
+postgres_db = os.environ.get("POSTGRES_DB")
+postgres_user = os.environ.get("POSTGRES_USER")
+postgres_password = os.environ.get("POSTGRES_PASSWORD")
+postgres_host = os.environ.get("POSTGRES_HOST")
+postgres_port = os.environ.get("POSTGRES_PORT")
+
+conn = psycopg2.connect(
+    dbname=postgres_db,
+    user=postgres_user,
+    password=postgres_password,
+    host=postgres_host,
+    port=postgres_port,
+)
+
 curs = conn.cursor()
 tables = []
 curs.execute(
@@ -69,12 +80,13 @@ def train(training_params: TrainingParams):
     return fastapi.responses.JSONResponse({"training_id": training_id})
 
 
-@app.get("/trainings/{task_id}")
-def get_status(task_id):
-    task_result = celery.result.AsyncResult(task_id)
-    result = {
-        "training_id": task_id,
-        "training_status": task_result.status,
-        "training_result": task_result.result,
-    }
+@app.get("/trainings/{training_id}")
+def get_status(training_id):
+    curs = conn.cursor()
+    curs.execute(
+        f"""SELECT training_id, datasets, batch_size,
+            max_epochs FROM trainings WHERE training_id='{training_id}'"""
+    )
+    result = curs.fetchall()
+    curs.close()
     return fastapi.responses.JSONResponse(result)

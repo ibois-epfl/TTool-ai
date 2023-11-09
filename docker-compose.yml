@@ -7,45 +7,24 @@ services:
     ports:
       - 8004:8000
     command: uvicorn main:app --host 0.0.0.0 --reload
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - POSTGRES_URL=postgres://postgres:12345@postgres:5432/postgres
-    depends_on:
-      - redis
-      - postgres
+    env_file:
+      - .env
 
   training_worker:
     build: ./src/trainingservice
-    command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log -Q ${RABBITMQ_TRAIN_QUEUE}
+    env_file:
+      - .env
     depends_on:
       - training_api
-      - redis
-
-  redis:
-    image: redis:7
 
   dashboard:
     build: ./src/dashboardservice
-    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    command: celery --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT} flower --port=5555
     ports:
       - 5556:5555
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file:
+      - .env
     depends_on:
       - training_api
       - training_worker
-      - redis
-
-  postgres:
-    image: postgres:latest
-    ports:
-      - 5432:5432
-    environment:
-      - POSTGRES_PASSWORD=12345
-    volumes:
-      - /home/aymanns/projects/ENAC_augmented_carpentry/postgres_data:/var/lib/postgresql/data
