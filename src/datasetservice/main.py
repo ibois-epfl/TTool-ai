@@ -79,6 +79,11 @@ async def upload_video(video: fastapi.UploadFile, label: str, status_code=201):
 
     # Rename tmp dir with hash string
     dataset_dir = data_dir / dataset_id
+    if dataset_dir.exists():
+        return {
+            "message": f"""Video has already been uploaded please
+            use the existing version with id {dataset_id}"""
+        }
     tmp_dir.rename(dataset_dir)
     video_path = dataset_dir / video.filename
 
