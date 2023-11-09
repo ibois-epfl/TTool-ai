@@ -51,9 +51,8 @@ def get_list_of_datasets():
         """SELECT dataset_id, label, video_path,
             n_images, n_train_images, n_val_images FROM datasets"""
     )
-    curs.close()
-    conn.commit()
     results = curs.fetchall()
+    curs.close()
     return fastapi.responses.JSONResponse(results)
 
 
