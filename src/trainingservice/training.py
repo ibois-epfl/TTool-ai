@@ -4,6 +4,7 @@ Provides the API for transferlerning on an EfficientNet.
 
 import pathlib
 
+import tensorboardX
 import torch
 import torch.nn as nn
 import torchvision
@@ -102,7 +103,8 @@ class ToolDataset(torch.utils.data.Dataset):
             # Apply normalization and augmentation if provided
             image = self.transform(image)
         if self.target_transform:
-            # Convert tool name string into target for network (usually one hot encoding)
+            # Convert tool name string into target for network
+            # (usually one hot encoding)
             label = self.target_transform(label)
         return image, label
 
@@ -114,17 +116,24 @@ class ToolDataset(torch.utils.data.Dataset):
         return labels
 
 
-def train(training_data, validation_data, max_epochs, batch_size):
+def train(data_dirs, max_epochs, batch_size, log_dir):
+    log_dir = pathlib.Path(log_dir)
+    checkpoint_dir = log_dir / "checkpoints"
+    checkpoint_dir.mkdir()
+
     torch.set_float32_matmul_precision("high")
 
-    train_dataset = ToolDataset(pathlib.Path("."))
-
-    labels = train_dataset.get_labels()
+    train_datasets = []
+    val_datasets = []
+    for data_dir in data_dirs:
+        train_datasets.append(ToolDataset(data_dir / "train"))
+        val_datasets.append(ToolDataset(data_dir / "val"))
+    train_dataset = torch.utils.data.ConcatDatasets(train_datasets)
+    val_dataset = torch.utils.data.ConcatDatasets(val_datasets)
 
     normalization_transform = (
         torchvision.models.EfficientNet_V2_S_Weights.DEFAULT.transforms()
     )
-    network = TransferEfficientNet(num_classes=10)
 
     augmentation_transforms = torchvision.transforms.Compose(
         [
@@ -138,9 +147,110 @@ def train(training_data, validation_data, max_epochs, batch_size):
         [augmentation_transforms, normalization_transform]
     )
 
+    labels = list(set(train_dataset.get_labels()))
+
     def label_transform(label):
         """
         Converts the name of a tool into a one hot
         vector encoding.
         """
         return labels.index(label)
+
+    train_dataset.transform = transform
+    val_dataset.transform = normalization_transform
+    train_dataset.target_transform = label_transform
+    val_dataset.target_transform = label_transform
+
+    model = TransferEfficientNet(num_classes=10)
+
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4
+    )
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[15, 30], gamma=0.1
+    )
+
+    loss_fn = nn.CrossEntropyLoss()
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False
+    )
+
+    def save_model(name, epoch, step):
+        for path in checkpoint_dir.glob(f"{name}*"):
+            path.unlink()
+        file_name = f"{name}_epoch_{epoch}_step_{step}"
+        torch.save(model.state_dict(), f"{file_name}.pth")
+        traced_model = torch.jit.trace(model, torch.rand(1, 3, 720, 1280))
+        traced_model.save(f"{file_name}.pt")
+
+    writer = tensorboardX.SummaryWriter(log_dir)
+
+    max_val_acc = 0
+    min_val_loss = float("inf")
+
+    for epoch in range(max_epochs):
+        # Training phase
+        model.train()
+        train_correct = 0
+        for batch_idx, batch in enumerate(train_loader):
+            images, labels = batch
+
+            optimizer.zero_grad()
+
+            outputs = model(images)
+
+            loss = loss_fn(outputs, labels)
+            loss.backward()
+
+            optimizer.step()
+
+            batch_loss = loss.item()
+            writer.add_scalar(
+                "Loss/Train", batch_loss, epoch * len(train_loader) + batch_idx
+            )
+
+            _, predictions = torch.max(outputs, 1)
+            batch_correct = (predictions == labels).sum().item()
+            train_correct += batch_correct
+
+        train_accuracy = train_correct / len(train_loader)
+        writer.add_scalar(
+            "Accuracy/Train", train_accuracy, (epoch + 1) * len(train_loader)
+        )
+
+        # Validation phase
+        model.eval()
+        val_correct = 0
+        val_loss = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                images, labels = batch
+
+                outputs = model(images)
+
+                loss = loss_fn(outputs, labels)
+                val_loss += loss.item()
+
+                _, predictions = torch.max(outputs, 1)
+
+                val_correct += (predictions == labels).sum().item()
+
+        average_val_loss = val_loss / len(val_loader)
+        val_accuracy = val_correct / len(val_loader)
+        writer.add_scalar("Loss/Validation", average_val_loss, epoch)
+        writer.add_scalar("Accuracy/Validation", val_accuracy, epoch)
+
+        if average_val_loss < min_val_loss or val_accuracy > max_val_acc:
+            step = (epoch + 1) * len(train_loader)
+            save_model("min_val_loss", epoch, step)
+
+        if val_accuracy > max_val_acc:
+            step = (epoch + 1) * len(train_loader)
+            save_model("max_val_accuracy", epoch, step)
+
+        scheduler.step()
+    writer.close()

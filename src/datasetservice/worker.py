@@ -5,9 +5,17 @@ import random
 import cv2
 from celery import Celery
 
+rabbitmq_user = os.environ.get("RABBITMQ_DEFAULT_USER")
+rabbitmq_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
+rabbitmq_host = os.environ.get("RABBITMQ_HOST")
+rabbitmq_port = os.environ.get("RABBITMQ_PORT")
+data_queue = os.environ.get("RABBITMQ_DATA_QUEUE")
+
 celery = Celery(__name__)
-celery.conf.broker_url = os.environ.get("CELERY_BROKER_URL")
-celery.conf.result_backend = os.environ.get("CELERY_RESULT_BACKEND")
+celery.conf.broker_url = (
+    f"amqp://{rabbitmq_user}:{rabbitmq_password}@{rabbitmq_host}:{rabbitmq_port}"
+)
+celery.conf.task_routes = {"process_video": {"queue": data_queue}}
 
 
 @celery.task(name="process_video")

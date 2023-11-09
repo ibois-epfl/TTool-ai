@@ -10,8 +10,20 @@ import worker
 
 data_dir = pathlib.Path(os.environ.get("DATA_DIR"))
 
-postgres_url = os.environ.get("POSTGRES_URL")
-conn = psycopg2.connect(postgres_url)
+postgres_db = os.environ.get("POSTGRES_DB")
+postgres_user = os.environ.get("POSTGRES_USER")
+postgres_password = os.environ.get("POSTGRES_PASSWORD")
+postgres_host = os.environ.get("POSTGRES_HOST")
+postgres_port = os.environ.get("POSTGRES_PORT")
+
+conn = psycopg2.connect(
+    dbname=postgres_db,
+    user=postgres_user,
+    password=postgres_password,
+    host=postgres_host,
+    port=postgres_port,
+)
+
 curs = conn.cursor()
 tables = []
 curs.execute(
