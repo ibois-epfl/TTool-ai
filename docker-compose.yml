@@ -37,11 +37,13 @@ services:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
       - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
-    depends_on:
-      - rabbitmq
+    volumes:
+      - ${DATA_DIR}:/data
 
   rabbitmq:
-    image: rabbitmq:3
+    image: rabbitmq:3-management
+    ports:
+      - 15672:15672
 
   postgres:
     image: postgres:latest

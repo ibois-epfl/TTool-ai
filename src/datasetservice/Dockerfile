@@ -4,6 +4,9 @@ FROM python:3.11.2-slim-buster
 # set work directory
 WORKDIR /usr/src/app
 
+# Create data directory
+RUN mkdir /data
+
 # set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
