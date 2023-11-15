@@ -2,58 +2,48 @@ version: '3.8'
 
 services:
 
-  training_api:
-    build: ./src/trainingservice
-    ports:
-      - 8004:8000
-    command: uvicorn main:app --host 0.0.0.0 --reload
-    env_file:
-      - .env
+  # training_api:
+  #   build: ./src/trainingservice
+  #   ports:
+  #     - 8004:8000
+  #   command: uvicorn main:app --host 0.0.0.0 --reload
+  #   env_file:
+  #     - .env
 
-  training_worker:
-    build: ./src/trainingservice
-    command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log -Q ${RABBITMQ_TRAIN_QUEUE}
-    env_file:
-      - .env
-    depends_on:
-      - training_api
+  # training_worker:
+  #   build: ./src/trainingservice
+  #   command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log -Q ${RABBITMQ_TRAIN_QUEUE}
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     - training_api
 
-  dataset_api:
-    build: ./src/datasetservice
-    ports:
-      - 8005:8000
-    command: uvicorn main:app --host 0.0.0.0 --reload
-    env_file:
-      - .env
-    volumes:
-      - /home/aymanns/projects/ENAC_augmented_carpentry/ttool-classifier-app/data_dir:${DATA_DIR}
+  # control_api:
+  #   build: ./src/controlservice
+  #   ports:
+  #     - "8000:8000"
+  #   command: uvicorn main:app --host 0.0.0.0 --reload
+  #   volumes:
+  #     - ./src/controlservice:/media/train_videos/
+  #   env_file:
+  #     - .env
 
   dataset_worker:
     build: ./src/datasetservice
-    command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log -Q ${RABBITMQ_DATA_QUEUE}
-    env_file:
-      - .env
+    command: python dataset_worker.py
+    environment:
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
     depends_on:
-      - dataset_api
+      - rabbitmq
 
-  dashboard_training:
-    build: ./src/dashboardservice
-    command: celery --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT} flower --port=5555 -Q ${RABBITMQ_TRAIN_QUEUE}
-    ports:
-      - 5556:5555
-    env_file:
-      - .env
-    depends_on:
-      - training_api
-      - training_worker
+  rabbitmq:
+    image: rabbitmq:3
 
-  dashboard_dataset:
-      build: ./src/dashboardservice
-      command: celery --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT} flower --port=5555 -Q ${RABBITMQ_DATA_QUEUE}
-      ports:
-        - 5557:5555
-      env_file:
-        - .env
-      depends_on:
-        - dataset_api
-        - dataset_worker
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
