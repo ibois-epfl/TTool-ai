@@ -1,5 +1,8 @@
+import os
 import pathlib
 import random
+import threading
+import time
 from unittest.mock import Mock, patch
 
 import cv2
@@ -97,60 +100,52 @@ def test_callback(process_video):
     process_video.assert_called_once_with(path=pathlib.Path(path))
 
 
-# def test_connect_worker_to_queue(video_file):
-#     user = os.environ.get("RABBITMQ_DEFAULT_USER")
-#     password = os.environ.get("RABBITMQ_DEFAULT_PASS")
-#     host = os.environ.get("RABBITMQ_HOST")
-#     port = os.environ.get("RABBITMQ_PORT")
-#     queue = os.environ.get("RABBITMQ_TEST_QUEUE")
-#
-#     credentials = pika.PlainCredentials(
-#         username=user,
-#         password=password,
-#     )
-#     connection_params = pika.ConnectionParameters(
-#         host=host,
-#         port=port,
-#         credentials=credentials,
-#     )
-#
-#     for attempt in range(5):
-#         try:
-#             connection = pika.BlockingConnection(connection_params)
-#             break
-#         except pika.exceptions.AMQPConnectionError:
-#             time.sleep(1)
-#             continue
-#
-#     channel = connection.channel()
-#     channel.queue_declare(queue=queue, durable=True)
-#
-#     properties = pika.BasicProperties(
-#             delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE
-#       )
-#
-#     channel.basic_publish(
-#         exchange="",
-#         routing_key=queue,
-#         body=str(video_file),
-#         properties=properties,
-#     )
-#
-#     worker_channel = worker.connect_worker_to_queue(
-#         user,
-#         password,
-#         host,
-#         port,
-#         queue,
-#     )
-#
-#     method_frame, properties, body = worker_channel.basic_get(queue=queue)
-#     print(method_frame, properties, body)
-#     # for (
-#     #     method_frame,
-#     #     properties,
-#     #     body,
-#     # ) in worker_channel.basic_get(queue=queue):
-#     #     print(method_frame, properties, body)
-#     # worker.callback(worker_channel, method_frame, properties, body)
-#     # _check_processed_video(video_file)
+def test_integration_dataset_worker(video_file):
+    user = os.environ.get("RABBITMQ_DEFAULT_USER")
+    password = os.environ.get("RABBITMQ_DEFAULT_PASS")
+    host = os.environ.get("RABBITMQ_HOST")
+    port = os.environ.get("RABBITMQ_PORT")
+    queue = os.environ.get("RABBITMQ_TEST_QUEUE")
+
+    credentials = pika.PlainCredentials(
+        username=user,
+        password=password,
+    )
+    connection_params = pika.ConnectionParameters(
+        host=host,
+        port=port,
+        credentials=credentials,
+    )
+
+    for attempt in range(5):
+        try:
+            connection = pika.BlockingConnection(connection_params)
+            break
+        except pika.exceptions.AMQPConnectionError:
+            time.sleep(1)
+            continue
+
+    channel = connection.channel()
+    channel.queue_declare(queue=queue, durable=True)
+
+    def run_worker():
+        worker = dataset_worker.DatasetWorker(queue)
+        worker.connect(user=user, password=password, host=host, port=port)
+        worker.start_consuming(callback=dataset_worker.callback)
+
+    worker_thread = threading.Thread(target=run_worker)
+    worker_thread.start()
+
+    properties = pika.BasicProperties(delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE)
+
+    channel.basic_publish(
+        exchange="",
+        routing_key=queue,
+        body=str(video_file),
+        properties=properties,
+    )
+
+    # Give the worker some time to finish the work
+    time.sleep(10)
+
+    _check_processed_video(video_file)

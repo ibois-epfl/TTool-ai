@@ -83,7 +83,7 @@ if __name__ == "__main__":
     # more time to start so we try to connect multiple times.
     while True:
         try:
-            worker.connect(user, password, host, port)
+            worker.connect(user=user, password=password, host=host, port=port)
             print("Connection to RabbitMQ succeeded.")
             break
         except pika.exceptions.AMQPConnectionError:
@@ -92,6 +92,6 @@ if __name__ == "__main__":
             continue
 
     try:
-        worker.start_consuming(callback=process_video)
+        worker.start_consuming(callback=callback)
     finally:
         worker.close_connection()
