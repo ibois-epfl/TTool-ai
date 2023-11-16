@@ -5,6 +5,28 @@ import time
 
 import cv2
 import pika
+import sqlalchemy
+import sqlalchemy.orm
+
+
+class Base(sqlalchemy.orm.DeclarativeBase):
+    pass
+
+
+class Status(str, sqlalchemy.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class VideoDB(Base):
+    __tablename__ = "videos"
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
+    label = sqlalchemy.Column(sqlalchemy.String)
+    video_path = sqlalchemy.Column(sqlalchemy.String)
+    video_hash = sqlalchemy.Column(sqlalchemy.String)
+    upload_status = Status.PENDING
 
 
 def process_video(path: pathlib.Path):
@@ -34,10 +56,33 @@ def process_video(path: pathlib.Path):
     cap.release()
 
 
-def callback(ch, method, properties, body):
-    path_str = body.decode("utf-8")
-    path = pathlib.Path(path_str)
-    process_video(path)
+class Callback:
+    def __init__(self):
+        self.engine = None
+        self.session = None
+
+    def connect(self, database_url):
+        self.engine = sqlalchemy.create_engine(database_url)
+        self.session = sqlalchemy.orm.Session(self.engine)
+
+    def callback(self, ch, method, properties, body):
+        path_str = body.decode("utf-8")
+        stmt = sqlalchemy.select(VideoDB).where(VideoDB.video_path == path_str)
+        video_entry = self.session.scalars(stmt).one()
+        try:
+            video_entry.upload_status = Status.PROCESSING
+            self.session.commit()
+            path = pathlib.Path(path_str)
+            process_video(path)
+            video_entry.upload_status = Status.COMPLETED
+            self.session.commit()
+        except Exception:
+            video_entry.upload_status = Status.FAILED
+            self.session.commit()
+
+    def close_connection(self):
+        self.session.close()
+        self.engine.dispose()
 
 
 class DatasetWorker:
@@ -71,19 +116,19 @@ class DatasetWorker:
 
 
 if __name__ == "__main__":
-    user = os.environ.get("RABBITMQ_DEFAULT_USER")
-    password = os.environ.get("RABBITMQ_DEFAULT_PASS")
-    host = os.environ.get("RABBITMQ_HOST")
-    port = os.environ.get("RABBITMQ_PORT")
-    queue = os.environ.get("RABBITMQ_TEST_QUEUE")
+    USER = os.environ.get("RABBITMQ_DEFAULT_USER")
+    PASSWORD = os.environ.get("RABBITMQ_DEFAULT_PASS")
+    HOST = os.environ.get("RABBITMQ_HOST")
+    PORT = os.environ.get("RABBITMQ_PORT")
+    QUEUE = os.environ.get("RABBITMQ_TEST_QUEUE")
 
-    worker = DatasetWorker(queue)
+    worker = DatasetWorker(QUEUE)
 
     # The rabbitmq container for testing sometimes needs
     # more time to start so we try to connect multiple times.
     while True:
         try:
-            worker.connect(user=user, password=password, host=host, port=port)
+            worker.connect(user=USER, password=PASSWORD, host=HOST, port=PORT)
             print("Connection to RabbitMQ succeeded.")
             break
         except pika.exceptions.AMQPConnectionError:
@@ -91,7 +136,19 @@ if __name__ == "__main__":
             time.sleep(1)
             continue
 
+    # Connect to postgres db
+    USER = os.environ.get("POSTGRES_USER")
+    PASSWORD = os.environ.get("POSTGRES_PASS")
+    HOST = os.environ.get("POSTGRES_HOST")
+    PORT = os.environ.get("POSTGRES_PORT")
+    DB = os.environ.get("POSTGRES_DB")
+    DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+
+    callback = Callback()
+    callback.connect(DB_URL)
+
     try:
-        worker.start_consuming(callback=callback)
+        worker.start_consuming(callback=callback.callback)
     finally:
         worker.close_connection()
+        callback.close_connection()

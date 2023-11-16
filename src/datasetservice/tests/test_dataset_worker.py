@@ -10,6 +10,7 @@ import dataset_worker
 import numpy as np
 import pika
 import pytest
+import sqlalchemy
 
 random.seed(42)
 
@@ -61,7 +62,7 @@ def mock_channel(mock_blocking_connection):
 
 
 def test_worker_connects_and_receives_messages(mock_blocking_connection, mock_channel):
-    mock_callback = Mock(spec=dataset_worker.callback)
+    mock_callback = Mock(spec=dataset_worker.Callback.callback)
 
     worker = dataset_worker.DatasetWorker(queue="test_queue")
     worker.connect(
@@ -92,21 +93,21 @@ def test_worker_connects_and_receives_messages(mock_blocking_connection, mock_ch
     mock_blocking_connection.return_value.close.assert_called_once()
 
 
+@patch("sqlalchemy.create_engine", spec=sqlalchemy.create_engine)
+@patch("sqlalchemy.orm.Session", spec=sqlalchemy.orm.Session)
 @patch("dataset_worker.process_video", spec=dataset_worker.process_video)
-def test_callback(process_video):
+def test_callback(mock_process_video, mock_session, mock_create_engine):
     path = "/tmp/test.mp4"
     body = str(path).encode("utf-8")
-    dataset_worker.callback(None, None, None, body)
-    process_video.assert_called_once_with(path=pathlib.Path(path))
+    callback = dataset_worker.Callback()
+    callback.connect("URL")
+    callback.callback(None, None, None, body)
+    mock_process_video.assert_called_once_with(path=pathlib.Path(path))
+    mock_create_engine.assert_called_once_with("URL")
+    mock_session.assert_called_once_with(mock_create_engine.return_value)
 
 
-def test_integration_dataset_worker(video_file):
-    user = os.environ.get("RABBITMQ_DEFAULT_USER")
-    password = os.environ.get("RABBITMQ_DEFAULT_PASS")
-    host = os.environ.get("RABBITMQ_HOST")
-    port = os.environ.get("RABBITMQ_PORT")
-    queue = os.environ.get("RABBITMQ_TEST_QUEUE")
-
+def connect_to_rabbitmq(user, password, host, port, queue):
     credentials = pika.PlainCredentials(
         username=user,
         password=password,
@@ -128,10 +129,59 @@ def test_integration_dataset_worker(video_file):
     channel = connection.channel()
     channel.queue_declare(queue=queue, durable=True)
 
+    return channel
+
+
+def get_postgres_url():
+    pg_user = os.environ.get("POSTGRES_USER")
+    pg_password = os.environ.get("POSTGRES_PASSWORD")
+    pg_host = os.environ.get("POSTGRES_HOST")
+    pg_port = os.environ.get("POSTGRES_PORT")
+    pg_db = os.environ.get("POSTGRES_DB")
+    postgres_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    return postgres_url
+
+
+@pytest.fixture
+def video_file_with_db_entry(video_file):
+    database_url = get_postgres_url()
+    engine = sqlalchemy.create_engine(database_url)
+    dataset_worker.Base.metadata.create_all(bind=engine)
+    with sqlalchemy.orm.Session(engine) as session:
+        new_video = dataset_worker.VideoDB(
+            label="bla",
+            video_path=str(video_file),
+            video_hash="123456",
+            upload_status=dataset_worker.Status.PENDING,
+        )
+        session.add(new_video)
+        session.commit()
+    engine.dispose()
+    return video_file
+
+
+def test_integration_dataset_worker(video_file_with_db_entry):
+    video_file = video_file_with_db_entry
+
+    rbbt_user = os.environ.get("RABBITMQ_DEFAULT_USER")
+    rbbt_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
+    rbbt_host = os.environ.get("RABBITMQ_HOST")
+    rbbt_port = os.environ.get("RABBITMQ_PORT")
+    rbbt_queue = os.environ.get("RABBITMQ_TEST_QUEUE")
+    channel = connect_to_rabbitmq(
+        rbbt_user, rbbt_password, rbbt_host, rbbt_port, rbbt_queue
+    )
+
+    postgres_url = get_postgres_url()
+
     def run_worker():
-        worker = dataset_worker.DatasetWorker(queue)
-        worker.connect(user=user, password=password, host=host, port=port)
-        worker.start_consuming(callback=dataset_worker.callback)
+        worker = dataset_worker.DatasetWorker(rbbt_queue)
+        worker.connect(
+            user=rbbt_user, password=rbbt_password, host=rbbt_host, port=rbbt_port
+        )
+        callback = dataset_worker.Callback()
+        callback.connect(postgres_url)
+        worker.start_consuming(callback=callback)
 
     worker_thread = threading.Thread(target=run_worker)
     worker_thread.start()
@@ -140,7 +190,7 @@ def test_integration_dataset_worker(video_file):
 
     channel.basic_publish(
         exchange="",
-        routing_key=queue,
+        routing_key=rbbt_queue,
         body=str(video_file),
         properties=properties,
     )
@@ -149,3 +199,12 @@ def test_integration_dataset_worker(video_file):
     time.sleep(10)
 
     _check_processed_video(video_file)
+
+    engine = sqlalchemy.create_engine(postgres_url)
+    with sqlalchemy.orm.Session(engine) as session:
+        stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
+            dataset_worker.VideoDB.video_path == video_file
+        )
+        video_entry = session.scalars(stmt).one()
+        assert video_entry.upload_statu == dataset_worker.Status.COMPLETED
+    engine.dispose()
