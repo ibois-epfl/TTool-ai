@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     # Connect to postgres db
     USER = os.environ.get("POSTGRES_USER")
-    PASSWORD = os.environ.get("POSTGRES_PASS")
+    PASSWORD = os.environ.get("POSTGRES_PASSWORD")
     HOST = os.environ.get("POSTGRES_HOST")
     PORT = os.environ.get("POSTGRES_PORT")
     DB = os.environ.get("POSTGRES_DB")
