@@ -195,16 +195,15 @@ def test_integration_dataset_worker(video_file_with_db_entry):
         properties=properties,
     )
 
-    # Give the worker some time to finish the work
-    time.sleep(10)
-
-    _check_processed_video(video_file)
-
     engine = sqlalchemy.create_engine(postgres_url)
     with sqlalchemy.orm.Session(engine) as session:
         stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
-            dataset_worker.VideoDB.video_path == video_file
+            dataset_worker.VideoDB.video_path == str(video_file)
         )
         video_entry = session.scalars(stmt).one()
-        assert video_entry.upload_statu == dataset_worker.Status.COMPLETED
+        while  video_entry.upload_status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+            time.sleep(1)
+        assert video_entry.upload_status == dataset_worker.Status.COMPLETED
     engine.dispose()
+    
+    _check_processed_video(video_file)
