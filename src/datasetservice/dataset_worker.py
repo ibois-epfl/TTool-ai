@@ -63,6 +63,7 @@ class Callback:
 
     def connect(self, database_url):
         self.engine = sqlalchemy.create_engine(database_url)
+        Base.metadata.create_all(self.engine)
         self.session = sqlalchemy.orm.Session(self.engine)
 
     def callback(self, ch, method, properties, body):
