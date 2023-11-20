@@ -25,8 +25,8 @@ class VideoDB(Base):
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
     label = sqlalchemy.Column(sqlalchemy.String)
     video_path = sqlalchemy.Column(sqlalchemy.String)
-    video_hash = sqlalchemy.Column(sqlalchemy.String)
-    upload_status = Status.PENDING
+    video_hash = sqlalchemy.Column(sqlalchemy.String, unique=True)
+    upload_status = sqlalchemy.Column(sqlalchemy.String, default=Status.PENDING)
 
 
 def process_video(path: pathlib.Path):
