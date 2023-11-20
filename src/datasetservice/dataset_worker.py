@@ -121,7 +121,7 @@ if __name__ == "__main__":
     PASSWORD = os.environ.get("RABBITMQ_DEFAULT_PASS")
     HOST = os.environ.get("RABBITMQ_HOST")
     PORT = os.environ.get("RABBITMQ_PORT")
-    QUEUE = os.environ.get("RABBITMQ_TEST_QUEUE")
+    QUEUE = os.environ.get("RABBITMQ_DATA_QUEUE")
 
     worker = DatasetWorker(QUEUE)
 

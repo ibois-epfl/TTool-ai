@@ -36,6 +36,7 @@ services:
       - RABBITMQ_PORT=${RABBITMQ_PORT}
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_DATA_QUEUE=${RABBITMQ_DATA_QUEUE}
       - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
@@ -44,9 +45,6 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - ${DATA_DIR}:/data
-    depends_on:
-      - rabbitmq
-      - postgres
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -57,3 +55,5 @@ services:
     image: postgres:latest
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - ./database:/var/lib/postgresql/data
