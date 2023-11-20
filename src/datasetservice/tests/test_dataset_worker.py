@@ -1,3 +1,4 @@
+import ctypes
 import os
 import pathlib
 import random
@@ -104,7 +105,7 @@ def test_callback(mock_process_video, mock_session, mock_create_engine):
     callback.callback(None, None, None, body)
     mock_process_video.assert_called_once_with(path=pathlib.Path(path))
     mock_create_engine.assert_called_once_with("URL")
-    mock_session.assert_called_once_with(mock_create_engine.return_value)
+    mock_session.assert_called_with(mock_create_engine.return_value)
 
 
 def connect_to_rabbitmq(user, password, host, port, queue):
@@ -121,15 +122,16 @@ def connect_to_rabbitmq(user, password, host, port, queue):
     for attempt in range(5):
         try:
             connection = pika.BlockingConnection(connection_params)
-            break
-        except pika.exceptions.AMQPConnectionError:
-            time.sleep(1)
-            continue
+            channel = connection.channel()
+            channel.queue_declare(queue=queue, durable=True)
+            return channel
+        except pika.exceptions.AMQPConnectionError as e:
+            if attempt == 4:
+                raise e
+            else:
+                time.sleep(1)
+                continue
 
-    channel = connection.channel()
-    channel.queue_declare(queue=queue, durable=True)
-
-    return channel
 
 
 def get_postgres_url():
@@ -172,6 +174,9 @@ def test_integration_dataset_worker(video_file_with_db_entry):
         rbbt_user, rbbt_password, rbbt_host, rbbt_port, rbbt_queue
     )
 
+    # Remove any old messages
+    channel.queue_purge(rbbt_queue)
+
     postgres_url = get_postgres_url()
 
     def run_worker():
@@ -181,7 +186,10 @@ def test_integration_dataset_worker(video_file_with_db_entry):
         )
         callback = dataset_worker.Callback()
         callback.connect(postgres_url)
-        worker.start_consuming(callback=callback)
+        try:
+            worker.start_consuming(callback=callback.callback)
+        finally:
+            callback.close_connection()
 
     worker_thread = threading.Thread(target=run_worker)
     worker_thread.start()
@@ -196,14 +204,25 @@ def test_integration_dataset_worker(video_file_with_db_entry):
     )
 
     engine = sqlalchemy.create_engine(postgres_url)
-    with sqlalchemy.orm.Session(engine) as session:
-        stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
-            dataset_worker.VideoDB.video_path == str(video_file)
-        )
-        video_entry = session.scalars(stmt).one()
-        while  video_entry.upload_status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
-            time.sleep(1)
-        assert video_entry.upload_status == dataset_worker.Status.COMPLETED
+
+    def get_status():
+        with sqlalchemy.orm.Session(engine) as session:
+            stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
+                dataset_worker.VideoDB.video_path == str(video_file)
+            )
+            status = session.scalars(stmt).one().upload_status
+            return status
+
+    status = get_status()
+    while status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+        time.sleep(1)
+        status = get_status()
+    assert status == dataset_worker.Status.COMPLETED
     engine.dispose()
     
     _check_processed_video(video_file)
+
+    # Kill the worker thread
+    tid = worker_thread.ident
+    exctype = ValueError
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
