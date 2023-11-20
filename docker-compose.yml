@@ -2,22 +2,6 @@ version: '3.8'
 
 services:
 
-  # training_api:
-  #   build: ./src/trainingservice
-  #   ports:
-  #     - 8004:8000
-  #   command: uvicorn main:app --host 0.0.0.0 --reload
-  #   env_file:
-  #     - .env
-
-  # training_worker:
-  #   build: ./src/trainingservice
-  #   command: celery -A worker.celery worker --loglevel=info --logfile=logs/celery.log -Q ${RABBITMQ_TRAIN_QUEUE}
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     - training_api
-
   # control_api:
   #   build: ./src/controlservice
   #   ports:
@@ -27,6 +11,24 @@ services:
   #     - ./src/controlservice:/media/train_videos/
   #   env_file:
   #     - .env
+
+  dataset_worker:
+    build: ./src/trainingservice
+    command: python training_worker.py
+    environment:
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_TRAIN_QUEUE=${RABBITMQ_TRAIN_QUEUE}
+      - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ${DATA_DIR}:/data
 
   dataset_worker:
     build: ./src/datasetservice

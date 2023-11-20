@@ -13,6 +13,16 @@ test_dataset_worker:
 	$(MAKE) start_dataset_worker
 	docker compose --env-file .env.test exec dataset_worker python3 -m pytest -s --full-trace
 
+.PHONY: test_training_worker
+test_training_worker:
+	function tearDown {
+		$(MAKE) stop
+	}
+	trap tearDown EXIT
+	$(MAKE) start_DBs_for_testing
+	$(MAKE) start_training_worker
+	docker compose --env-file .env.test exec training_worker python3 -m pytest -s --full-trace
+
 .PHONY: start_DBs_for_testing
 start_DBs_for_testing:
 	docker compose --env-file .env.test up --build -d rabbitmq postgres
