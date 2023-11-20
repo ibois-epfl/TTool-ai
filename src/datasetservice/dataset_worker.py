@@ -64,25 +64,27 @@ class Callback:
     def connect(self, database_url):
         self.engine = sqlalchemy.create_engine(database_url)
         Base.metadata.create_all(self.engine)
-        self.session = sqlalchemy.orm.Session(self.engine)
 
+    def _update_status(self, path, status):
+        session = sqlalchemy.orm.Session(self.engine)
+        stmt = sqlalchemy.select(VideoDB).where(VideoDB.video_path == path)
+        video_entry = session.scalars(stmt).one()
+        video_entry.upload_status = status
+        session.commit()
+        session.close()
+    
     def callback(self, ch, method, properties, body):
         path_str = body.decode("utf-8")
-        stmt = sqlalchemy.select(VideoDB).where(VideoDB.video_path == path_str)
-        video_entry = self.session.scalars(stmt).one()
         try:
-            video_entry.upload_status = Status.PROCESSING
-            self.session.commit()
+            self._update_status(path_str, Status.PROCESSING)
             path = pathlib.Path(path_str)
             process_video(path)
-            video_entry.upload_status = Status.COMPLETED
-            self.session.commit()
-        except Exception:
-            video_entry.upload_status = Status.FAILED
-            self.session.commit()
+            self._update_status(path_str, Status.COMPLETED)
+        except Exception as e:
+            self._update_status(path_str, Status.FAILED)
+            print(e)
 
     def close_connection(self):
-        self.session.close()
         self.engine.dispose()
 
 
