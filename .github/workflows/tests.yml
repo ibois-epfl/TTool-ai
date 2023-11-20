@@ -14,8 +14,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
     - uses: adambirds/docker-compose-action@v1.3.0
       with:
         compose-file: "./docker-compose.yml"
         test-container: "training_api"
+        test-command: "python3 -m pytest"
+
+    - uses: adambirds/docker-compose-action@v1.3.0
+      with:
+        compose-file: "./docker-compose.yml"
+        test-container: "dataset_api"
         test-command: "python3 -m pytest"

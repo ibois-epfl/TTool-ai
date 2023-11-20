@@ -1,0 +1,5 @@
+opencv-python
+pika
+pytest
+sqlalchemy
+psycopg2-binary
