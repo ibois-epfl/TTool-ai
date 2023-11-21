@@ -14,7 +14,7 @@ services:
 
   training_worker:
     build: ./src/trainingservice
-    command: python training_worker.py
+    command: python3 training_worker.py
     environment:
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
