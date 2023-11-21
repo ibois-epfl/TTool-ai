@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import sqlalchemy
@@ -11,10 +12,15 @@ import training_worker
 def test_Callback(mock_train, mock_session, mock_create_engine):
     callback = training_worker.Callback()
     callback.connect("URL")
-    body = {
-        "datasets": ["12345", "67891"],
+    train_params = {
+        "data_dirs": ["/data_dir1", "/data_dir2"],
+        "max_epochs": 45,
+        "batch_size": 20,
+        "log_dir": "/logs",
     }
+    body = json.dumps(train_params)
+    body = body.encode("utf-8")
     callback.callback(None, None, None, body)
-    mock_train.assert_called_once_with()
+    mock_train.assert_called_once_with(**train_params)
     mock_create_engine.assert_called_once_with("URL")
-    mock_session.assert_called_with(mock_create_engine.return_vlaue)
+    mock_session.assert_called_with(mock_create_engine.return_value)
