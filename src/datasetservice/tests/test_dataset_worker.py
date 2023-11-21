@@ -133,7 +133,6 @@ def connect_to_rabbitmq(user, password, host, port, queue):
                 continue
 
 
-
 def get_postgres_url():
     pg_user = os.environ.get("POSTGRES_USER")
     pg_password = os.environ.get("POSTGRES_PASSWORD")
@@ -214,15 +213,17 @@ def test_integration_dataset_worker(video_file_with_db_entry):
             return status
 
     status = get_status()
-    while status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+    while status in [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
         time.sleep(1)
         status = get_status()
     assert status == dataset_worker.Status.COMPLETED
     engine.dispose()
-    
+
     _check_processed_video(video_file)
 
     # Kill the worker thread
     tid = worker_thread.ident
     exctype = ValueError
-    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(
+        ctypes.c_long(tid), ctypes.py_object(exctype)
+    )

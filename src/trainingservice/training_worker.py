@@ -1,12 +1,31 @@
+import os
+import time
+
+import pika
+import sqlalchemy
+
+import training
+
+
+class Base(sqlalchemy.orm.DeclarativeBase):
+    pass
+
+
 class Callback:
     def __init__(self):
-        pass
+        self.engine = None
 
-    def connect(self, url):
-        pass
+    def connect(self, database_url):
+        self.engine = sqlalchemy.create_engine(database_url)
+        Base.metadata.create_all(self.engine)
 
     def callback(self, ch, method, properties, body):
-        pass
+        try:
+            training_params = dict(body.decode("utf-8"))
+            training.train(**training_params)
+        except Exception as e:
+            print(e)
+
 
 class TrainingWorker:
     def __init__(self, queue):
@@ -20,6 +39,7 @@ class TrainingWorker:
 
     def close_connection(self):
         pass
+
 
 if __name__ == "__main__":
     USER = os.environ.get("RABBITMQ_DEFAULT_USER")
