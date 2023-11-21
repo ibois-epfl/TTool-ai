@@ -12,7 +12,7 @@ services:
   #   env_file:
   #     - .env
 
-  dataset_worker:
+  training_worker:
     build: ./src/trainingservice
     command: python training_worker.py
     environment:
