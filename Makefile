@@ -31,6 +31,10 @@ start_DBs_for_testing:
 start_dataset_worker:
 	docker compose --env-file .env.test up --build -d dataset_worker
 
+.PHONY: start_training_worker
+start_training_worker:
+	docker compose --env-file .env.test up --build -d training_worker
+
 .PHONY: stop
 stop:
 	docker compose --env-file .env.test down
@@ -38,3 +42,4 @@ stop:
 .PHONY: deploy
 deploy:
 	$(MAKE) start_dataset_worker
+	$(MAKE) start_training_worker
