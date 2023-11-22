@@ -254,3 +254,7 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
 
         scheduler.step()
     writer.close()
+
+    weights_file = list(log_dir.glob("min_val_loss*.pth"))[0]
+    trace_file = list(log_dir.glob("min_val_loss*.pt"))[0]
+    return weights_file, trace_file
