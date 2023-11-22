@@ -72,7 +72,7 @@ class Callback:
         video_entry.upload_status = status
         session.commit()
         session.close()
-    
+
     def callback(self, ch, method, properties, body):
         path_str = body.decode("utf-8")
         try:
