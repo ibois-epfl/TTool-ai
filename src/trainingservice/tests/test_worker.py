@@ -10,6 +10,7 @@ from training_worker import Base, Callback, TrainingDB, TrainingParams
 @patch("training_worker.Base.metadata.create_all", spec=Base.metadata.create_all)
 @patch("training_worker.TrainingParams", spec=TrainingParams)
 @patch("training_worker.TrainingDB", spec=TrainingDB)
+@patch("sqlalchemy.select", spec=sqlalchemy.select)
 @patch("sqlalchemy.create_engine", spec=sqlalchemy.create_engine)
 @patch("sqlalchemy.orm.Session", spec=sqlalchemy.orm.Session)
 @patch("training.train", spec=training.train)
@@ -17,6 +18,7 @@ def test_Callback(
     mock_train,
     mock_session,
     mock_create_engine,
+    mock_select,
     mock_training_db,
     mock_training_params,
     mock_create_all,
@@ -34,6 +36,8 @@ def test_Callback(
     train_hash = hash(mock_training_params())
     mock_training_params.reset_mock()
 
+    mock_train.return_value = ("weights.pth", "trace.pt")
+
     body = json.dumps(train_params)
     body = body.encode("utf-8")
 
@@ -41,6 +45,7 @@ def test_Callback(
     callback = Callback()
     callback.connect("URL")
     callback.callback(None, None, None, body)
+    callback.close_connection()
 
     # Assertions
     mock_create_all.assert_called_once_with(mock_create_engine.return_value)
@@ -59,3 +64,4 @@ def test_Callback(
 
     mock_create_engine.assert_called_once_with("URL")
     mock_session.assert_called_with(mock_create_engine.return_value)
+    mock_select.assert_called_with(mock_training_db)
