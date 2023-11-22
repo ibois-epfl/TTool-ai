@@ -1,5 +1,9 @@
+import ctypes
+import os
 import pathlib
 import random
+import threading
+import time
 from unittest.mock import Mock, patch
 
 import cv2
@@ -7,6 +11,7 @@ import dataset_worker
 import numpy as np
 import pika
 import pytest
+import sqlalchemy
 
 random.seed(42)
 
@@ -58,7 +63,7 @@ def mock_channel(mock_blocking_connection):
 
 
 def test_worker_connects_and_receives_messages(mock_blocking_connection, mock_channel):
-    mock_callback = Mock(spec=dataset_worker.callback)
+    mock_callback = Mock(spec=dataset_worker.Callback.callback)
 
     worker = dataset_worker.DatasetWorker(queue="test_queue")
     worker.connect(
@@ -89,68 +94,135 @@ def test_worker_connects_and_receives_messages(mock_blocking_connection, mock_ch
     mock_blocking_connection.return_value.close.assert_called_once()
 
 
+@patch("sqlalchemy.create_engine", spec=sqlalchemy.create_engine)
+@patch("sqlalchemy.orm.Session", spec=sqlalchemy.orm.Session)
 @patch("dataset_worker.process_video", spec=dataset_worker.process_video)
-def test_callback(process_video):
+def test_callback(mock_process_video, mock_session, mock_create_engine):
     path = "/tmp/test.mp4"
     body = str(path).encode("utf-8")
-    dataset_worker.callback(None, None, None, body)
-    process_video.assert_called_once_with(path=pathlib.Path(path))
+    callback = dataset_worker.Callback()
+    callback.connect("URL")
+    callback.callback(None, None, None, body)
+    mock_process_video.assert_called_once_with(path=pathlib.Path(path))
+    mock_create_engine.assert_called_once_with("URL")
+    mock_session.assert_called_with(mock_create_engine.return_value)
 
 
-# def test_connect_worker_to_queue(video_file):
-#     user = os.environ.get("RABBITMQ_DEFAULT_USER")
-#     password = os.environ.get("RABBITMQ_DEFAULT_PASS")
-#     host = os.environ.get("RABBITMQ_HOST")
-#     port = os.environ.get("RABBITMQ_PORT")
-#     queue = os.environ.get("RABBITMQ_TEST_QUEUE")
-#
-#     credentials = pika.PlainCredentials(
-#         username=user,
-#         password=password,
-#     )
-#     connection_params = pika.ConnectionParameters(
-#         host=host,
-#         port=port,
-#         credentials=credentials,
-#     )
-#
-#     for attempt in range(5):
-#         try:
-#             connection = pika.BlockingConnection(connection_params)
-#             break
-#         except pika.exceptions.AMQPConnectionError:
-#             time.sleep(1)
-#             continue
-#
-#     channel = connection.channel()
-#     channel.queue_declare(queue=queue, durable=True)
-#
-#     properties = pika.BasicProperties(
-#             delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE
-#       )
-#
-#     channel.basic_publish(
-#         exchange="",
-#         routing_key=queue,
-#         body=str(video_file),
-#         properties=properties,
-#     )
-#
-#     worker_channel = worker.connect_worker_to_queue(
-#         user,
-#         password,
-#         host,
-#         port,
-#         queue,
-#     )
-#
-#     method_frame, properties, body = worker_channel.basic_get(queue=queue)
-#     print(method_frame, properties, body)
-#     # for (
-#     #     method_frame,
-#     #     properties,
-#     #     body,
-#     # ) in worker_channel.basic_get(queue=queue):
-#     #     print(method_frame, properties, body)
-#     # worker.callback(worker_channel, method_frame, properties, body)
-#     # _check_processed_video(video_file)
+def connect_to_rabbitmq(user, password, host, port, queue):
+    credentials = pika.PlainCredentials(
+        username=user,
+        password=password,
+    )
+    connection_params = pika.ConnectionParameters(
+        host=host,
+        port=port,
+        credentials=credentials,
+    )
+
+    for attempt in range(5):
+        try:
+            connection = pika.BlockingConnection(connection_params)
+            channel = connection.channel()
+            channel.queue_declare(queue=queue, durable=True)
+            return channel
+        except pika.exceptions.AMQPConnectionError as e:
+            if attempt == 4:
+                raise e
+            else:
+                time.sleep(1)
+                continue
+
+
+
+def get_postgres_url():
+    pg_user = os.environ.get("POSTGRES_USER")
+    pg_password = os.environ.get("POSTGRES_PASSWORD")
+    pg_host = os.environ.get("POSTGRES_HOST")
+    pg_port = os.environ.get("POSTGRES_PORT")
+    pg_db = os.environ.get("POSTGRES_DB")
+    postgres_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    return postgres_url
+
+
+@pytest.fixture
+def video_file_with_db_entry(video_file):
+    database_url = get_postgres_url()
+    engine = sqlalchemy.create_engine(database_url)
+    dataset_worker.Base.metadata.create_all(bind=engine)
+    with sqlalchemy.orm.Session(engine) as session:
+        new_video = dataset_worker.VideoDB(
+            label="bla",
+            video_path=str(video_file),
+            video_hash="123456",
+            upload_status=dataset_worker.Status.PENDING,
+        )
+        session.add(new_video)
+        session.commit()
+    engine.dispose()
+    return video_file
+
+
+def test_integration_dataset_worker(video_file_with_db_entry):
+    video_file = video_file_with_db_entry
+
+    rbbt_user = os.environ.get("RABBITMQ_DEFAULT_USER")
+    rbbt_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
+    rbbt_host = os.environ.get("RABBITMQ_HOST")
+    rbbt_port = os.environ.get("RABBITMQ_PORT")
+    rbbt_queue = os.environ.get("RABBITMQ_TEST_QUEUE")
+    channel = connect_to_rabbitmq(
+        rbbt_user, rbbt_password, rbbt_host, rbbt_port, rbbt_queue
+    )
+
+    # Remove any old messages
+    channel.queue_purge(rbbt_queue)
+
+    postgres_url = get_postgres_url()
+
+    def run_worker():
+        worker = dataset_worker.DatasetWorker(rbbt_queue)
+        worker.connect(
+            user=rbbt_user, password=rbbt_password, host=rbbt_host, port=rbbt_port
+        )
+        callback = dataset_worker.Callback()
+        callback.connect(postgres_url)
+        try:
+            worker.start_consuming(callback=callback.callback)
+        finally:
+            callback.close_connection()
+
+    worker_thread = threading.Thread(target=run_worker)
+    worker_thread.start()
+
+    properties = pika.BasicProperties(delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE)
+
+    channel.basic_publish(
+        exchange="",
+        routing_key=rbbt_queue,
+        body=str(video_file),
+        properties=properties,
+    )
+
+    engine = sqlalchemy.create_engine(postgres_url)
+
+    def get_status():
+        with sqlalchemy.orm.Session(engine) as session:
+            stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
+                dataset_worker.VideoDB.video_path == str(video_file)
+            )
+            status = session.scalars(stmt).one().upload_status
+            return status
+
+    status = get_status()
+    while status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+        time.sleep(1)
+        status = get_status()
+    assert status == dataset_worker.Status.COMPLETED
+    engine.dispose()
+    
+    _check_processed_video(video_file)
+
+    # Kill the worker thread
+    tid = worker_thread.ident
+    exctype = ValueError
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
