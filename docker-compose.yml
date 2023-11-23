@@ -1,61 +1,58 @@
 version: '3.8'
 
 services:
-
-  # control_api:
-  #   build: ./src/controlservice
-  #   ports:
-  #     - "8000:8000"
-  #   command: uvicorn main:app --host 0.0.0.0 --reload
-  #   volumes:
-  #     - ./src/controlservice:/media/train_videos/
-  #   env_file:
-  #     - .env
+  control_api:
+    build: ./src/controlservice
+    ports:
+      - "8000:8000"
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    volumes:
+      - ${VIDEO_DIR}:/media/train_videos/
+      - ${DATA_DIR}:/data
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
 
   training_worker:
     build: ./src/trainingservice
     command: python training_worker.py
-    environment:
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_PORT=${RABBITMQ_PORT}
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-      - RABBITMQ_TRAIN_QUEUE=${RABBITMQ_TRAIN_QUEUE}
-      - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - ${DATA_DIR}:/data
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
 
   dataset_worker:
     build: ./src/datasetservice
     command: python dataset_worker.py
-    environment:
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_PORT=${RABBITMQ_PORT}
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-      - RABBITMQ_DATA_QUEUE=${RABBITMQ_DATA_QUEUE}
-      - RABBITMQ_TEST_QUEUE=${RABBITMQ_TEST_QUEUE}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - ${DATA_DIR}:/data
+      - ${VIDEO_DIR}:/media/train_videos/
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: "rabbitmq:management"
+    restart: always
     ports:
-      - 15672:15672
+      - "15672:15672"
+      - "5672:5672"
+    env_file:
+      - .env
 
   postgres:
     image: postgres:latest
-    environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    restart: always
+    ports:
+      - "5432:5432"
     volumes:
-      - ./database:/var/lib/postgresql/data
+      - ${POSTGRES_DIR}:/var/lib/postgresql/data
+    env_file:
+      - .env
