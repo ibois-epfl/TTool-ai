@@ -33,8 +33,8 @@ def process_video(path: pathlib.Path):
     directory = path.parents[0]
     train_dir = directory / "train"
     val_dir = directory / "val"
-    train_dir.mkdir()
-    val_dir.mkdir()
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(val_dir, exist_ok=True)
     cap = cv2.VideoCapture(str(path))
 
     if not cap.isOpened():
@@ -103,6 +103,8 @@ class DatasetWorker:
             host=host,
             port=port,
             credentials=credentials,
+            heartbeat=600,
+            blocked_connection_timeout=300
         )
         self.connection = pika.BlockingConnection(connection_params)
         self.channel = self.connection.channel()
@@ -121,7 +123,7 @@ class DatasetWorker:
 if __name__ == "__main__":
     USER = os.environ.get("RABBITMQ_DEFAULT_USER")
     PASSWORD = os.environ.get("RABBITMQ_DEFAULT_PASS")
-    HOST = os.environ.get("RABBITMQ_HOST")
+    HOST = "rabbitmq"
     PORT = os.environ.get("RABBITMQ_PORT")
     QUEUE = os.environ.get("RABBITMQ_DATA_QUEUE")
 
@@ -142,10 +144,10 @@ if __name__ == "__main__":
     # Connect to postgres db
     USER = os.environ.get("POSTGRES_USER")
     PASSWORD = os.environ.get("POSTGRES_PASSWORD")
-    HOST = os.environ.get("POSTGRES_HOST")
+    HOST = "postgres"
     PORT = os.environ.get("POSTGRES_PORT")
     DB = os.environ.get("POSTGRES_DB")
-    DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}/{DB}"
 
     callback = Callback()
     callback.connect(DB_URL)
