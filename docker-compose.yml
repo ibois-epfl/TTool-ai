@@ -15,6 +15,7 @@ services:
   training_worker:
     build: ./src/trainingservice
     command: python3 training_worker.py
+    runtime: nvidia
     environment:
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
