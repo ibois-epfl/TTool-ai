@@ -112,16 +112,32 @@ class Callback:
 
 class TrainingWorker:
     def __init__(self, queue):
-        pass
+        self.queue = queue
+        self.session = None
+        self.connection = None
 
     def connect(self, user, password, host, port):
-        pass
+        credentials = pika.PlainCredentials(
+            username=user,
+            password=password,
+        )
+        connection_params = pika.ConnectionParameters(
+            host=host,
+            port=port,
+            credentials=credentials,
+        )
+        self.connection = pika.BlockingConnection(connection_params)
+        self.channel = self.connection.channel()
+        self.channel.queue_declare(queue=self.queue, durable=True)
 
     def start_consuming(self, callback):
-        pass
+        self.channel.basic_qos(prefetch_count=1)
+        self.channel.basic_consume(queue=self.queue, on_message_callback=callback)
+        self.channel.start_consuming()
 
     def close_connection(self):
-        pass
+        if self.connection and not self.connection.is_closed:
+            self.connection.close()
 
 
 if __name__ == "__main__":
