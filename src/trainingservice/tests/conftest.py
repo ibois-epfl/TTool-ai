@@ -17,5 +17,5 @@ def data_dirs(tmp_path):
             n = 10 if subset == "train" else 2
             for i in range(n):
                 img = torch.zeros(3, 125, 125, dtype=torch.uint8)
-                torchvision.io.write_png(img, str(path / f"{i}.png"))
+                torchvision.io.write_png(img, str(path / f"{subset}/{i}.png"))
     return list(map(str, paths))
