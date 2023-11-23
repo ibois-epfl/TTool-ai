@@ -9,8 +9,6 @@ from unittest.mock import Mock, patch
 import pika
 import pytest
 import sqlalchemy
-import torch
-import torchvision
 import training
 from training_worker import (
     Base,
@@ -164,22 +162,6 @@ def get_postgres_url():
     return postgres_url
 
 
-@pytest.fixture
-def data_dirs(tmp_path):
-    paths = [tmp_path / "1", tmp_path / "2"]
-    for path in paths:
-        path = pathlib.Path(path)
-        path.mkdir()
-        for subset in ["train", "val"]:
-            subset_dir = path / subset
-            subset_dir.mkdir()
-            n = 10 if subset == "train" else 2
-            for i in range(n):
-                img = torch.zeros(3, 125, 125, dtype=torch.uint8)
-                torchvision.io.write_png(img, str(path / f"{i}.png"))
-    return list(map(str, paths))
-
-
 def test_integration_training_worker(data_dirs):
     rbbt_user = os.environ.get("RABBITMQ_DEFAULT_USER")
     rbbt_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
@@ -231,6 +213,9 @@ def test_integration_training_worker(data_dirs):
             )
             status = session.scalars(stmt).one().status
             return status
+
+    # Give the worker some time to create the Postgres entry
+    time.sleep(5)
 
     status = get_status()
     while status in [Status.PENDING, Status.TRAINING]:
