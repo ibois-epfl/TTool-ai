@@ -7,10 +7,10 @@ import torchvision
 
 @pytest.fixture
 def data_dirs(tmp_path):
-    paths = [tmp_path / "1", tmp_path / "2"]
+    paths = [tmp_path / "1/label1", tmp_path / "2/label2"]
     for path in paths:
         path = pathlib.Path(path)
-        path.mkdir()
+        path.mkdir(parents=True)
         for subset in ["train", "val"]:
             subset_dir = path / subset
             subset_dir.mkdir()
