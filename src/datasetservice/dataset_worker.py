@@ -123,7 +123,7 @@ class DatasetWorker:
 if __name__ == "__main__":
     USER = os.environ.get("RABBITMQ_DEFAULT_USER")
     PASSWORD = os.environ.get("RABBITMQ_DEFAULT_PASS")
-    HOST = "rabbitmq"
+    HOST = os.environ.get("RABBITMQ_HOST")
     PORT = os.environ.get("RABBITMQ_PORT")
     QUEUE = os.environ.get("RABBITMQ_DATA_QUEUE")
 
@@ -144,10 +144,10 @@ if __name__ == "__main__":
     # Connect to postgres db
     USER = os.environ.get("POSTGRES_USER")
     PASSWORD = os.environ.get("POSTGRES_PASSWORD")
-    HOST = "postgres"
+    HOST = os.environ.get("POSTGRES_HOST")
     PORT = os.environ.get("POSTGRES_PORT")
     DB = os.environ.get("POSTGRES_DB")
-    DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}/{DB}"
+    DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
 
     callback = Callback()
     callback.connect(DB_URL)
