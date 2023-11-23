@@ -1,12 +1,25 @@
+import ctypes
 import json
+import os
 import pathlib
+import threading
+import time
 from unittest.mock import Mock, patch
 
 import pika
 import pytest
 import sqlalchemy
+import torch
+import torchvision
 import training
-from training_worker import Base, Callback, TrainingDB, TrainingParams, TrainingWorker
+from training_worker import (
+    Base,
+    Callback,
+    Status,
+    TrainingDB,
+    TrainingParams,
+    TrainingWorker,
+)
 
 
 @patch("training_worker.Base.metadata.create_all", spec=Base.metadata.create_all)
@@ -55,6 +68,7 @@ def test_Callback(
 
     mock_training_db.assert_called_once_with(
         max_epochs=train_params["max_epochs"],
+        batch_size=train_params["batch_size"],
         data_dirs=train_params["data_dirs"],
         training_hash=train_hash,
     )
@@ -113,3 +127,134 @@ def test_training_worker(mock_blocking_connection, mock_channel):
     )
     mock_channel.start_consuming.assert_called_once()
     mock_blocking_connection.return_value.close.assert_called_once()
+
+
+def connect_to_rabbitmq(user, password, host, port, queue):
+    credentials = pika.PlainCredentials(
+        username=user,
+        password=password,
+    )
+    connection_params = pika.ConnectionParameters(
+        host=host,
+        port=port,
+        credentials=credentials,
+    )
+
+    for attempt in range(5):
+        try:
+            connection = pika.BlockingConnection(connection_params)
+            channel = connection.channel()
+            channel.queue_declare(queue=queue, durable=True)
+            return channel
+        except pika.exceptions.AMQPConnectionError as e:
+            if attempt == 4:
+                raise e
+            else:
+                time.sleep(1)
+                continue
+
+
+def get_postgres_url():
+    pg_user = os.environ.get("POSTGRES_USER")
+    pg_password = os.environ.get("POSTGRES_PASSWORD")
+    pg_host = os.environ.get("POSTGRES_HOST")
+    pg_port = os.environ.get("POSTGRES_PORT")
+    pg_db = os.environ.get("POSTGRES_DB")
+    postgres_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    return postgres_url
+
+
+@pytest.fixture
+def data_dirs(tmp_path):
+    paths = [tmp_path / "1", tmp_path / "2"]
+    for path in paths:
+        path = pathlib.Path(path)
+        path.mkdir()
+        for subset in ["train", "val"]:
+            subset_dir = path / subset
+            subset_dir.mkdir()
+            n = 10 if subset == "train" else 2
+            for i in range(n):
+                img = torch.zeros(3, 125, 125, dtype=torch.uint8)
+                torchvision.io.write_png(img, str(path / f"{i}.png"))
+    return list(map(str, paths))
+
+
+def test_integration_training_worker(data_dirs):
+    rbbt_user = os.environ.get("RABBITMQ_DEFAULT_USER")
+    rbbt_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
+    rbbt_host = os.environ.get("RABBITMQ_HOST")
+    rbbt_port = os.environ.get("RABBITMQ_PORT")
+    rbbt_queue = os.environ.get("RABBITMQ_TEST_QUEUE")
+    channel = connect_to_rabbitmq(
+        rbbt_user, rbbt_password, rbbt_host, rbbt_port, rbbt_queue
+    )
+
+    # Remove any old messages
+    channel.queue_purge(rbbt_queue)
+
+    postgres_url = get_postgres_url()
+
+    def run_worker():
+        worker = TrainingWorker(rbbt_queue)
+        worker.connect(
+            user=rbbt_user, password=rbbt_password, host=rbbt_host, port=rbbt_port
+        )
+        callback = Callback()
+        callback.connect(postgres_url)
+        try:
+            worker.start_consuming(callback=callback.callback)
+        finally:
+            callback.close_connection()
+
+    worker_thread = threading.Thread(target=run_worker)
+    worker_thread.start()
+
+    properties = pika.BasicProperties(delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE)
+
+    training_params = {"max_epochs": 10, "batch_size": 5, "data_dirs": data_dirs}
+    body = json.dumps(training_params).encode("utf-8")
+    training_hash = hash(TrainingParams(body))
+    channel.basic_publish(
+        exchange="",
+        routing_key=rbbt_queue,
+        body=body,
+        properties=properties,
+    )
+
+    engine = sqlalchemy.create_engine(postgres_url)
+
+    def get_status():
+        with sqlalchemy.orm.Session(engine) as session:
+            stmt = sqlalchemy.select(TrainingDB).where(
+                TrainingDB.training_hash == training_hash
+            )
+            status = session.scalars(stmt).one().status
+            return status
+
+    status = get_status()
+    while status in [Status.PENDING, Status.TRAINING]:
+        time.sleep(1)
+        status = get_status()
+    assert status == Status.DONE
+    engine.dispose()
+
+    with sqlalchemy.orm.Session(engine) as session:
+        stmt = sqlalchemy.select(TrainingDB).where(
+            TrainingDB.training_hash == training_hash
+        )
+        entry = session.scalars(stmt).one()
+        log_dir = entry.log_dir
+        weights = entry.weights
+        trace_file = entry.trace_file
+
+    assert pathlib.Path(log_dir).is_dir()
+    assert pathlib.Path(weights).exists()
+    assert pathlib.Path(trace_file).exists()
+
+    # Kill the worker thread
+    tid = worker_thread.ident
+    exctype = ValueError
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(
+        ctypes.c_long(tid), ctypes.py_object(exctype)
+    )
