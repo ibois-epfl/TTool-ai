@@ -96,7 +96,7 @@ def test_training_worker(mock_blocking_connection, mock_channel):
         user="test_user",
         password="test_password",
         host="test_host",
-        port=1234,
+        port=5672,
     )
     worker.start_consuming(callback=mock_callback)
     # Emulate the behaviour of the real connection
