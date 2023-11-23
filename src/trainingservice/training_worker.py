@@ -29,7 +29,7 @@ class TrainingDB(Base):
     max_epochs = sqlalchemy.Column(sqlalchemy.Integer)
     batch_size = sqlalchemy.Column(sqlalchemy.Integer)
 
-    training_hash = sqlalchemy.Column(sqlalchemy.String, unique=True)
+    training_hash = sqlalchemy.Column(sqlalchemy.BigInteger, unique=True)
 
     status = sqlalchemy.Column(sqlalchemy.String, default=Status.PENDING)
     logdir = sqlalchemy.Column(sqlalchemy.String)
@@ -79,6 +79,7 @@ class Callback:
         training_hash = hash(training_params)
         new_training = TrainingDB(
             max_epochs=training_params.max_epochs,
+            batch_size=training_params.batch_size,
             data_dirs=training_params.data_dirs,
             training_hash=training_hash,
         )
@@ -145,7 +146,7 @@ if __name__ == "__main__":
     PASSWORD = os.environ.get("RABBITMQ_DEFAULT_PASS")
     HOST = os.environ.get("RABBITMQ_HOST")
     PORT = os.environ.get("RABBITMQ_PORT")
-    QUEUE = os.environ.get("RABBITMQ_DATA_QUEUE")
+    QUEUE = os.environ.get("RABBITMQ_TRAIN_QUEUE")
 
     worker = TrainingWorker(QUEUE)
 
