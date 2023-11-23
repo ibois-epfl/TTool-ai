@@ -2,6 +2,7 @@
 Provides the API for transferlerning on an EfficientNet.
 """
 
+import itertools
 import pathlib
 
 import tensorboardX
@@ -85,7 +86,7 @@ class ToolDataset(torch.utils.data.Dataset):
 
         # Define the function used to extract the ground truth tool name
         # from the file name
-        self.get_tool = lambda x: x.stem.split("__")[0]
+        self.get_tool = lambda x: x.parents[1].stem
 
     def __len__(self):
         return len(self.img_paths)
@@ -121,6 +122,8 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     checkpoint_dir = log_dir / "checkpoints"
     checkpoint_dir.mkdir()
 
+    data_dirs = list(map(pathlib.Path, data_dirs))
+
     torch.set_float32_matmul_precision("high")
 
     train_datasets = []
@@ -128,8 +131,8 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     for data_dir in data_dirs:
         train_datasets.append(ToolDataset(data_dir / "train"))
         val_datasets.append(ToolDataset(data_dir / "val"))
-    train_dataset = torch.utils.data.ConcatDatasets(train_datasets)
-    val_dataset = torch.utils.data.ConcatDatasets(val_datasets)
+    train_dataset = torch.utils.data.ConcatDataset(train_datasets)
+    val_dataset = torch.utils.data.ConcatDataset(val_datasets)
 
     normalization_transform = (
         torchvision.models.EfficientNet_V2_S_Weights.DEFAULT.transforms()
@@ -147,19 +150,24 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         [augmentation_transforms, normalization_transform]
     )
 
-    labels = list(set(train_dataset.get_labels()))
+    label_list = map(lambda x: x.get_labels(), train_datasets)
+    label_list = itertools.chain.from_iterable(label_list)
+    label_list = list(set(label_list))
 
     def label_transform(label):
         """
         Converts the name of a tool into a one hot
         vector encoding.
         """
-        return labels.index(label)
+        index = label_list.index(label)
+        return torch.tensor(index)
 
-    train_dataset.transform = transform
-    val_dataset.transform = normalization_transform
-    train_dataset.target_transform = label_transform
-    val_dataset.target_transform = label_transform
+    for dataset in train_datasets:
+        dataset.transform = transform
+        dataset.target_transform = label_transform
+    for dataset in val_datasets:
+        dataset.transform = normalization_transform
+        dataset.target_transform = label_transform
 
     model = TransferEfficientNet(num_classes=10)
 
@@ -192,12 +200,16 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     max_val_acc = 0
     min_val_loss = float("inf")
 
+    model.to("cuda:0")
+
     for epoch in range(max_epochs):
         # Training phase
         model.train()
         train_correct = 0
         for batch_idx, batch in enumerate(train_loader):
             images, labels = batch
+            images.to("cuda:0")
+            labels.to("cuda:0")
 
             optimizer.zero_grad()
 
