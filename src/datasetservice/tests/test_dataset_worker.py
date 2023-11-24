@@ -231,7 +231,6 @@ def test_integration_dataset_worker(make_video_file_with_db_entry):
 
     status = get_status(video_file_1)
     while status in [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
-        print(f"Vid1: {status}")
         time.sleep(1)
         status = get_status(video_file_1)
     assert status == dataset_worker.Status.COMPLETED
@@ -239,7 +238,6 @@ def test_integration_dataset_worker(make_video_file_with_db_entry):
 
     status = get_status(video_file_2)
     while status in [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
-        print(f"Vid2: {status}")
         time.sleep(1)
         status = get_status(video_file_2)
     assert status == dataset_worker.Status.COMPLETED
