@@ -17,19 +17,23 @@ random.seed(42)
 
 
 @pytest.fixture
-def video_file(tmp_path):
-    video_path = tmp_path / "test_video.mp4"
-    fps = 29.974512
-    duration = 3
-    size = (720, 1280)
-    out = cv2.VideoWriter(
-        str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, size[::-1], False
-    )
-    for _ in range(int(fps * duration)):
-        data = np.random.randint(0, 256, size, dtype="uint8")
-        out.write(data)
-    out.release()
-    return video_path
+def make_video_file(tmp_path):
+    def _make_video_file():
+        n = len(list(tmp_path.glob("test_video*.mp4")))
+        video_path = tmp_path / f"test_video_{n+1}.mp4"
+        fps = 29.974512
+        duration = 3
+        size = (720, 1280)
+        out = cv2.VideoWriter(
+            str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, size[::-1], False
+        )
+        for _ in range(int(fps * duration)):
+            data = np.random.randint(0, 256, size, dtype="uint8")
+            out.write(data)
+        out.release()
+        return video_path
+
+    yield _make_video_file
 
 
 def _check_processed_video(video_file):
@@ -43,7 +47,8 @@ def _check_processed_video(video_file):
     assert np.isclose(n_train / (n_val + n_train), 0.8, atol=0.05)
 
 
-def test_process_video(video_file):
+def test_process_video(make_video_file):
+    video_file = make_video_file()
     dataset_worker.process_video(video_file)
     _check_processed_video(video_file)
 
@@ -133,7 +138,6 @@ def connect_to_rabbitmq(user, password, host, port, queue):
                 continue
 
 
-
 def get_postgres_url():
     pg_user = os.environ.get("POSTGRES_USER")
     pg_password = os.environ.get("POSTGRES_PASSWORD")
@@ -145,25 +149,31 @@ def get_postgres_url():
 
 
 @pytest.fixture
-def video_file_with_db_entry(video_file):
-    database_url = get_postgres_url()
-    engine = sqlalchemy.create_engine(database_url)
-    dataset_worker.Base.metadata.create_all(bind=engine)
-    with sqlalchemy.orm.Session(engine) as session:
-        new_video = dataset_worker.VideoDB(
-            label="bla",
-            video_path=str(video_file),
-            video_hash="123456",
-            upload_status=dataset_worker.Status.PENDING,
-        )
-        session.add(new_video)
-        session.commit()
-    engine.dispose()
-    return video_file
+def make_video_file_with_db_entry(make_video_file):
+    def _make_video_file_with_db_entry(label, hash_value):
+        video_file = make_video_file()
+        # video_file.rename(f"{hash_value}.mp4")
+        database_url = get_postgres_url()
+        engine = sqlalchemy.create_engine(database_url)
+        dataset_worker.Base.metadata.create_all(bind=engine)
+        with sqlalchemy.orm.Session(engine) as session:
+            new_video = dataset_worker.VideoDB(
+                label=label,
+                video_path=str(video_file),
+                video_hash=hash_value,
+                upload_status=dataset_worker.Status.PENDING,
+            )
+            session.add(new_video)
+            session.commit()
+        engine.dispose()
+        return video_file
+
+    yield _make_video_file_with_db_entry
 
 
-def test_integration_dataset_worker(video_file_with_db_entry):
-    video_file = video_file_with_db_entry
+def test_integration_dataset_worker(make_video_file_with_db_entry):
+    video_file_1 = make_video_file_with_db_entry("label1", "123456")
+    video_file_2 = make_video_file_with_db_entry("label2", "abcdef")
 
     rbbt_user = os.environ.get("RABBITMQ_DEFAULT_USER")
     rbbt_password = os.environ.get("RABBITMQ_DEFAULT_PASS")
@@ -199,13 +209,19 @@ def test_integration_dataset_worker(video_file_with_db_entry):
     channel.basic_publish(
         exchange="",
         routing_key=rbbt_queue,
-        body=str(video_file),
+        body=str(video_file_1),
+        properties=properties,
+    )
+    channel.basic_publish(
+        exchange="",
+        routing_key=rbbt_queue,
+        body=str(video_file_2),
         properties=properties,
     )
 
     engine = sqlalchemy.create_engine(postgres_url)
 
-    def get_status():
+    def get_status(video_file):
         with sqlalchemy.orm.Session(engine) as session:
             stmt = sqlalchemy.select(dataset_worker.VideoDB).where(
                 dataset_worker.VideoDB.video_path == str(video_file)
@@ -213,16 +229,27 @@ def test_integration_dataset_worker(video_file_with_db_entry):
             status = session.scalars(stmt).one().upload_status
             return status
 
-    status = get_status()
-    while status in  [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+    status = get_status(video_file_1)
+    while status in [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+        print(f"Vid1: {status}")
         time.sleep(1)
-        status = get_status()
+        status = get_status(video_file_1)
     assert status == dataset_worker.Status.COMPLETED
+    _check_processed_video(video_file_1)
+
+    status = get_status(video_file_2)
+    while status in [dataset_worker.Status.PENDING, dataset_worker.Status.PROCESSING]:
+        print(f"Vid2: {status}")
+        time.sleep(1)
+        status = get_status(video_file_2)
+    assert status == dataset_worker.Status.COMPLETED
+    _check_processed_video(video_file_2)
+
     engine.dispose()
-    
-    _check_processed_video(video_file)
 
     # Kill the worker thread
     tid = worker_thread.ident
     exctype = ValueError
-    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(
+        ctypes.c_long(tid), ctypes.py_object(exctype)
+    )
