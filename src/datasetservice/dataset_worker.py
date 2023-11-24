@@ -72,12 +72,13 @@ class Callback:
         video_entry.upload_status = status
         session.commit()
         session.close()
-    
+
     def callback(self, ch, method, properties, body):
         path_str = body.decode("utf-8")
         try:
             self._update_status(path_str, Status.PROCESSING)
             path = pathlib.Path(path_str)
+            print(path)
             process_video(path)
             self._update_status(path_str, Status.COMPLETED)
         except Exception as e:
@@ -110,7 +111,9 @@ class DatasetWorker:
 
     def start_consuming(self, callback):
         self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(queue=self.queue, on_message_callback=callback)
+        self.channel.basic_consume(
+            queue=self.queue, on_message_callback=callback, auto_ack=True
+        )
         self.channel.start_consuming()
 
     def close_connection(self):
