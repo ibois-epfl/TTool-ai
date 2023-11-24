@@ -18,11 +18,12 @@ random.seed(42)
 
 @pytest.fixture
 def make_video_file(tmp_path):
-    def _make_video_file():
-        n = len(list(tmp_path.glob("test_video*.mp4")))
-        video_path = tmp_path / f"test_video_{n+1}.mp4"
+    def _make_video_file(folder_name):
+        folder = tmp_path / folder_name
+        folder.mkdir()
+        video_path = folder / "test_video.mp4"
         fps = 29.974512
-        duration = 3
+        duration = 10
         size = (720, 1280)
         out = cv2.VideoWriter(
             str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, size[::-1], False
@@ -48,7 +49,7 @@ def _check_processed_video(video_file):
 
 
 def test_process_video(make_video_file):
-    video_file = make_video_file()
+    video_file = make_video_file("folder_name")
     dataset_worker.process_video(video_file)
     _check_processed_video(video_file)
 
@@ -92,7 +93,7 @@ def test_worker_connects_and_receives_messages(mock_blocking_connection, mock_ch
 
     mock_channel.basic_qos.assert_called_once_with(prefetch_count=1)
     mock_channel.basic_consume.assert_called_once_with(
-        queue="test_queue", on_message_callback=mock_callback
+        queue="test_queue", on_message_callback=mock_callback, auto_ack=True
     )
 
     mock_channel.start_consuming.assert_called_once()
@@ -151,8 +152,7 @@ def get_postgres_url():
 @pytest.fixture
 def make_video_file_with_db_entry(make_video_file):
     def _make_video_file_with_db_entry(label, hash_value):
-        video_file = make_video_file()
-        # video_file.rename(f"{hash_value}.mp4")
+        video_file = make_video_file(hash_value)
         database_url = get_postgres_url()
         engine = sqlalchemy.create_engine(database_url)
         dataset_worker.Base.metadata.create_all(bind=engine)
