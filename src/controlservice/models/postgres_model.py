@@ -15,8 +15,7 @@ class VideoDB(Base):
     label = Column(String)
     video_path = Column(String)
     video_hash = Column(String, unique=True)
-    train_dir = Column(String)
-    val_dir = Column(String)
+    data_dir = Column(String)
     upload_status = Column(String, default=DataLoaderStatus.PENDING)
 
 class TrainDB(Base):

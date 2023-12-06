@@ -172,7 +172,6 @@ if __name__ == "__main__":
 
     callback = Callback()
     callback.connect(DB_URL)
-    time.sleep(3600)
 
     try:
         worker.start_consuming(callback=callback.callback)

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 import json
+from sqlalchemy import func
 
 app = FastAPI()
 
@@ -45,7 +46,8 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
             new_video = VideoDB(
                     label=label,
                     video_path=os.path.join(label_dir, video_name),
-                    video_hash=video_hash
+                    video_hash=video_hash,
+                    data_dir=label_dir
                 )
             db_session.add(new_video)
             db_session.commit()
@@ -91,17 +93,12 @@ def get_classes_available():
 def set_train_config(config: TrainConfig):
     db_session = SessionLocal()
     try:
-        label_dirs = {}
-        for label in config.classes:
-            db_label = db_session.query(VideoDB).filter(VideoDB.label == label).first()
-            if db_label:
-                label_dirs[label] = {
-                    "train_dir": db_label.train_dir,
-                    "val_dir": db_label.val_dir
-                }
-            else:
-                raise HTTPException(status_code=404, detail=f"Label {label} not found in database.")
-            print("Label dirs: ", label_dirs)
+        label_dirs = []
+        results = (db_session.query
+                   (VideoDB.label,func.array_agg(VideoDB.data_dir),)
+                   .filter(VideoDB.label.in_(config.classes)).group_by(VideoDB.label).all())
+        for l, dir in results:
+            label_dirs.append(dir)
     except Exception as e:
         print("Error while getting label directories from database: ", str(e))
         raise HTTPException(status_code=500, detail="Set Config Error")
@@ -116,9 +113,8 @@ def set_train_config(config: TrainConfig):
         user_id = jsonable_encoder(new_train.id)
         train_config = {
             "user_id": user_id,
-            "classes": config.classes,
-            "train_data": label_dirs,
-            "num_epochs": config.epochs,
+            "data_dirs": label_dirs,
+            "max_epochs": config.epochs,
             "batch_size": config.batch_size,
         }
         message = json.dumps(train_config)
