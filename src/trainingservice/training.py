@@ -9,6 +9,7 @@ import tensorboardX
 import torch
 import torch.nn as nn
 import torchvision
+import tqdm
 
 
 class TransferEfficientNet(nn.Module):
@@ -125,6 +126,8 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     data_dirs = list(map(pathlib.Path, data_dirs))
 
     torch.set_float32_matmul_precision("high")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    print(f"Running on {device}")
 
     train_datasets = []
     val_datasets = []
@@ -170,6 +173,7 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         dataset.target_transform = label_transform
 
     model = TransferEfficientNet(num_classes=10)
+    model = model.to(device)
 
     optimizer = torch.optim.SGD(
         model.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4
@@ -191,25 +195,28 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         for path in checkpoint_dir.glob(f"{name}*"):
             path.unlink()
         file_name = f"{name}_epoch_{epoch}_step_{step}"
-        torch.save(model.state_dict(), f"{file_name}.pth")
-        traced_model = torch.jit.trace(model, torch.rand(1, 3, 720, 1280))
-        traced_model.save(f"{file_name}.pt")
+        torch.save(model.state_dict(), checkpoint_dir / f"{file_name}.pth")
+        traced_model = torch.jit.trace(
+            model, torch.rand(1, 3, 720, 1280, device=device)
+        )
+        traced_model.save(checkpoint_dir / f"{file_name}.pt")
 
     writer = tensorboardX.SummaryWriter(log_dir)
 
     max_val_acc = 0
     min_val_loss = float("inf")
 
-    model.to("cuda:0")
-
     for epoch in range(max_epochs):
+        print(f"Epoch {epoch + 1}/{max_epochs}")
         # Training phase
         model.train()
         train_correct = 0
-        for batch_idx, batch in enumerate(train_loader):
+        for batch_idx, batch in tqdm.tqdm(
+            enumerate(train_loader), total=len(train_loader)
+        ):
             images, labels = batch
-            images.to("cuda:0")
-            labels.to("cuda:0")
+            images = images.to(device)
+            labels = labels.to(device)
 
             optimizer.zero_grad()
 
@@ -241,6 +248,8 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         with torch.no_grad():
             for batch in val_loader:
                 images, labels = batch
+                images = images.to(device)
+                labels = labels.to(device)
 
                 outputs = model(images)
 
@@ -267,6 +276,6 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         scheduler.step()
     writer.close()
 
-    weights_file = list(log_dir.glob("min_val_loss*.pth"))[0]
-    trace_file = list(log_dir.glob("min_val_loss*.pt"))[0]
+    weights_file = list(checkpoint_dir.glob("min_val_loss*.pth"))[0]
+    trace_file = list(checkpoint_dir.glob("min_val_loss*.pt"))[0]
     return weights_file, trace_file
