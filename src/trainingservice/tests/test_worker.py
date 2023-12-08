@@ -21,7 +21,7 @@ from training_worker import (
 
 
 @pytest.fixture(params=("list", "list_of_lists"))
-def data_dirs(request):
+def data_dirs_list(request):
     if request.param == "list":
         data_dirs = ["/data/dir1", "/data/dir2", "/data/dir3"]
         expected = tuple(data_dirs)
@@ -41,8 +41,8 @@ def data_dirs(request):
 
 
 @pytest.fixture
-def message_body(data_dirs):
-    list_data_dirs, tuple_data_dirs = data_dirs
+def message_body(data_dirs_list):
+    list_data_dirs, tuple_data_dirs = data_dirs_list
     param_dict = {
         "user_id": 1,
         "max_epochs": 10,
@@ -52,6 +52,9 @@ def message_body(data_dirs):
     body = json.dumps(param_dict).encode("utf-8")
     expected = param_dict
     expected["data_dirs"] = tuple_data_dirs
+    expected["hash"] = hash(
+        (expected["max_epochs"], expected["batch_size"], *expected["data_dirs"])
+    )
     return body, expected
 
 
@@ -64,10 +67,7 @@ def test_TrainingParams(message_body):
     assert training_params.batch_size == expected["batch_size"]
     assert training_params.data_dirs == expected["data_dirs"]
     training_hash = hash(training_params)
-    expected_hash = hash(
-        (expected["max_epochs"], expected["batch_size"], *expected["data_dirs"])
-    )
-    assert training_hash == expected_hash
+    assert training_hash == expected["hash"]
 
 
 @patch("training_worker.Base.metadata.create_all", spec=Base.metadata.create_all)
@@ -85,26 +85,18 @@ def test_Callback(
     mock_training_db,
     mock_training_params,
     mock_create_all,
+    message_body,
 ):
     # Setup
-    train_params = {
-        "max_epochs": 45,
-        "batch_size": 20,
-        "data_dirs": ("/data_dir1", "/data_dir2"),
-        "user_id": 1,
-    }
-    mock_training_params.return_value.max_epochs = train_params["max_epochs"]
-    mock_training_params.return_value.batch_size = train_params["batch_size"]
-    mock_training_params.return_value.data_dirs = train_params["data_dirs"]
-    mock_training_params.return_value.user_id = train_params["user_id"]
-    mock_training_params.return_value.__hash__.return_value = 12345
-    train_hash = hash(mock_training_params())
+    body, expected = message_body
+    mock_training_params.return_value.max_epochs = expected["max_epochs"]
+    mock_training_params.return_value.batch_size = expected["batch_size"]
+    mock_training_params.return_value.data_dirs = expected["data_dirs"]
+    mock_training_params.return_value.user_id = expected["user_id"]
+    mock_training_params.return_value.__hash__.return_value = expected["hash"]
     mock_training_params.reset_mock()
 
     mock_train.return_value = ("weights.pth", "trace.pt")
-
-    body = json.dumps(train_params)
-    body = body.encode("utf-8")
 
     # Run
     callback = Callback()
@@ -117,20 +109,20 @@ def test_Callback(
     mock_training_params.assert_called_once_with(body)
 
     mock_training_db.assert_called_once_with(
-        max_epochs=train_params["max_epochs"],
-        batch_size=train_params["batch_size"],
-        data_dirs=train_params["data_dirs"],
-        user_id=train_params["user_id"],
-        training_hash=train_hash,
+        max_epochs=expected["max_epochs"],
+        batch_size=expected["batch_size"],
+        data_dirs=expected["data_dirs"],
+        user_id=expected["user_id"],
+        training_hash=expected["hash"],
     )
 
-    log_dir = pathlib.Path(f"/data/{train_hash}")
+    log_dir = pathlib.Path(f"/data/{expected['hash']}")
     assert log_dir.is_dir()
 
     mock_train.assert_called_once_with(
-        max_epochs=train_params["max_epochs"],
-        batch_size=train_params["batch_size"],
-        data_dirs=train_params["data_dirs"],
+        max_epochs=expected["max_epochs"],
+        batch_size=expected["batch_size"],
+        data_dirs=expected["data_dirs"],
         log_dir=log_dir,
     )
 
