@@ -41,10 +41,12 @@ def test_Callback(
         "max_epochs": 45,
         "batch_size": 20,
         "data_dirs": ("/data_dir1", "/data_dir2"),
+        "user_id": 1,
     }
     mock_training_params.return_value.max_epochs = train_params["max_epochs"]
     mock_training_params.return_value.batch_size = train_params["batch_size"]
     mock_training_params.return_value.data_dirs = train_params["data_dirs"]
+    mock_training_params.return_value.user_id = train_params["user_id"]
     mock_training_params.return_value.__hash__.return_value = 12345
     train_hash = hash(mock_training_params())
     mock_training_params.reset_mock()
@@ -68,13 +70,19 @@ def test_Callback(
         max_epochs=train_params["max_epochs"],
         batch_size=train_params["batch_size"],
         data_dirs=train_params["data_dirs"],
+        user_id=train_params["user_id"],
         training_hash=train_hash,
     )
 
     log_dir = pathlib.Path(f"/data/{train_hash}")
     assert log_dir.is_dir()
 
-    mock_train.assert_called_once_with(**train_params, log_dir=log_dir)
+    mock_train.assert_called_once_with(
+        max_epochs=train_params["max_epochs"],
+        batch_size=train_params["batch_size"],
+        data_dirs=train_params["data_dirs"],
+        log_dir=log_dir,
+    )
 
     mock_create_engine.assert_called_once_with("URL")
     mock_session.assert_called_with(mock_create_engine.return_value)
@@ -192,54 +200,63 @@ def test_integration_training_worker(data_dirs):
     worker_thread = threading.Thread(target=run_worker)
     worker_thread.start()
 
-    properties = pika.BasicProperties(delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE)
+    try:
+        properties = pika.BasicProperties(
+            delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE
+        )
 
-    training_params = {"max_epochs": 10, "batch_size": 5, "data_dirs": data_dirs}
-    body = json.dumps(training_params).encode("utf-8")
-    training_hash = hash(TrainingParams(body))
-    channel.basic_publish(
-        exchange="",
-        routing_key=rbbt_queue,
-        body=body,
-        properties=properties,
-    )
+        training_params = {
+            "user_id": 1,
+            "max_epochs": 10,
+            "batch_size": 5,
+            "data_dirs": data_dirs,
+        }
+        body = json.dumps(training_params).encode("utf-8")
+        training_hash = hash(TrainingParams(body))
+        channel.basic_publish(
+            exchange="",
+            routing_key=rbbt_queue,
+            body=body,
+            properties=properties,
+        )
 
-    engine = sqlalchemy.create_engine(postgres_url)
+        engine = sqlalchemy.create_engine(postgres_url)
 
-    def get_status():
+        def get_status():
+            with sqlalchemy.orm.Session(engine) as session:
+                stmt = sqlalchemy.select(TrainingDB).where(
+                    TrainingDB.training_hash == training_hash
+                )
+                status = session.scalars(stmt).one().status
+                return status
+
+        # Give the worker some time to create the Postgres entry
+        time.sleep(5)
+
+        status = get_status()
+        while status in [Status.PENDING, Status.TRAINING]:
+            time.sleep(1)
+            status = get_status()
+        assert status == Status.DONE
+        engine.dispose()
+
         with sqlalchemy.orm.Session(engine) as session:
             stmt = sqlalchemy.select(TrainingDB).where(
                 TrainingDB.training_hash == training_hash
             )
-            status = session.scalars(stmt).one().status
-            return status
+            entry = session.scalars(stmt).one()
+            log_dir = entry.log_dir
+            weights = entry.weights
+            trace_file = entry.trace_file
 
-    # Give the worker some time to create the Postgres entry
-    time.sleep(5)
+        assert pathlib.Path(log_dir).is_dir()
+        assert pathlib.Path(weights).exists()
+        assert pathlib.Path(trace_file).exists()
 
-    status = get_status()
-    while status in [Status.PENDING, Status.TRAINING]:
-        time.sleep(1)
-        status = get_status()
-    assert status == Status.DONE
-    engine.dispose()
-
-    with sqlalchemy.orm.Session(engine) as session:
-        stmt = sqlalchemy.select(TrainingDB).where(
-            TrainingDB.training_hash == training_hash
+    finally:
+        # Kill the worker thread
+        tid = worker_thread.ident
+        exctype = ValueError
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            ctypes.c_long(tid), ctypes.py_object(exctype)
         )
-        entry = session.scalars(stmt).one()
-        log_dir = entry.log_dir
-        weights = entry.weights
-        trace_file = entry.trace_file
-
-    assert pathlib.Path(log_dir).is_dir()
-    assert pathlib.Path(weights).exists()
-    assert pathlib.Path(trace_file).exists()
-
-    # Kill the worker thread
-    tid = worker_thread.ident
-    exctype = ValueError
-    ctypes.pythonapi.PyThreadState_SetAsyncExc(
-        ctypes.c_long(tid), ctypes.py_object(exctype)
-    )
