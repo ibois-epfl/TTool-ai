@@ -20,6 +20,56 @@ from training_worker import (
 )
 
 
+@pytest.fixture(params=("list", "list_of_lists"))
+def data_dirs(request):
+    if request.param == "list":
+        data_dirs = ["/data/dir1", "/data/dir2", "/data/dir3"]
+        expected = tuple(data_dirs)
+    elif request.param == "list_of_lists":
+        data_dirs = [
+            ["/data/dir1", "/data/dir2"],
+            ["/data/dir3", "/data/dir4", "/data/dir5"],
+        ]
+        expected = (
+            "/data/dir1",
+            "/data/dir2",
+            "/data/dir3",
+            "/data/dir4",
+            "/data/dir5",
+        )
+    return data_dirs, expected
+
+
+@pytest.fixture
+def message_body(data_dirs):
+    list_data_dirs, tuple_data_dirs = data_dirs
+    param_dict = {
+        "user_id": 1,
+        "max_epochs": 10,
+        "batch_size": 5,
+        "data_dirs": list_data_dirs,
+    }
+    body = json.dumps(param_dict).encode("utf-8")
+    expected = param_dict
+    expected["data_dirs"] = tuple_data_dirs
+    return body, expected
+
+
+def test_TrainingParams(message_body):
+    body, expected = message_body
+    training_params = TrainingParams(body)
+
+    assert training_params.user_id == expected["user_id"]
+    assert training_params.max_epochs == expected["max_epochs"]
+    assert training_params.batch_size == expected["batch_size"]
+    assert training_params.data_dirs == expected["data_dirs"]
+    training_hash = hash(training_params)
+    expected_hash = hash(
+        (expected["max_epochs"], expected["batch_size"], *expected["data_dirs"])
+    )
+    assert training_hash == expected_hash
+
+
 @patch("training_worker.Base.metadata.create_all", spec=Base.metadata.create_all)
 @patch("training_worker.TrainingParams", spec=TrainingParams)
 @patch("training_worker.TrainingDB", spec=TrainingDB)

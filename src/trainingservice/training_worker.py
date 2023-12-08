@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import pathlib
@@ -44,7 +45,11 @@ class TrainingParams:
         param_dict = json.loads(bstr.decode("utf-8"))
         self.max_epochs = param_dict["max_epochs"]
         self.batch_size = param_dict["batch_size"]
-        self.data_dirs = tuple(param_dict["data_dirs"])
+        data_dirs = param_dict["data_dirs"]
+        if isinstance(data_dirs[0], list):
+            # Turn list of lists into a single list of directories
+            data_dirs = itertools.chain.from_iterable(data_dirs)
+        self.data_dirs = tuple(data_dirs)
         self.user_id = param_dict["user_id"]
 
     def __hash__(self):
