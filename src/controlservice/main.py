@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
-from models.postgres_model import VideoDB, DataLoaderStatus, TrainDB
+from models.postgres_model import VideoDB, Status, TrainDB
 from models.train_config_api import TrainConfig
 from config.postgres_config import SessionLocal, init_db
 from config.rabbit_config import producer_rabbit_channel, RABBITMQ_DATA_QUEUE, RABBITMQ_TRAIN_QUEUE
@@ -14,6 +14,7 @@ from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 import json
 from sqlalchemy import func
+import uuid
 
 app = FastAPI()
 
@@ -80,7 +81,7 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
 def get_classes_available():
     db_session = SessionLocal()
     try:
-        labels = db_session.query(VideoDB.label).filter(VideoDB.upload_status == DataLoaderStatus.COMPLETED).distinct().all()
+        labels = db_session.query(VideoDB.label).filter(VideoDB.upload_status == Status.COMPLETED).distinct().all()
         labels = [label[0] for label in labels]
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error while getting labels from database.")
@@ -102,20 +103,15 @@ def set_train_config(config: TrainConfig):
     except Exception as e:
         print("Error while getting label directories from database: ", str(e))
         raise HTTPException(status_code=500, detail="Set Config Error")
-    try:
-        new_train = TrainDB(labels=config.classes)
-        db_session.add(new_train)
-        db_session.commit()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error while adding train config to database")
 
     try:
-        user_id = jsonable_encoder(new_train.id)
+        user_id = uuid.uuid4().hex
         train_config = {
             "user_id": user_id,
             "data_dirs": label_dirs,
             "max_epochs": config.epochs,
             "batch_size": config.batch_size,
+            "classes": config.classes
         }
         message = json.dumps(train_config)
         print("Sending message to rabbitmq queue: ", train_config)
@@ -131,12 +127,12 @@ def set_train_config(config: TrainConfig):
 
 
 @app.get("/get_train_status/{user_id}", status_code=200)
-def get_train_status(user_id: int):
+def get_train_status(user_id: str):
     db_session = SessionLocal()
     try:
-        query = db_session.query(TrainDB).filter(TrainDB.id == user_id).first()
+        query = db_session.query(TrainDB).filter(TrainDB.user_id == user_id).first()
         if query:
-            train_status = query.train_status
+            train_status = query.status
         else:
             raise HTTPException(status_code=404, detail="User id not found in database.")
     except Exception as e:
@@ -146,16 +142,16 @@ def get_train_status(user_id: int):
     return train_status
 
 @app.get("/get_train_result/{user_id}", status_code=200)
-def get_train_result(user_id: int):
+def get_train_result(user_id: str):
     db_session = SessionLocal()
     try:
-        query = db_session.query(TrainDB).filter(TrainDB.id == user_id).first()
+        query = db_session.query(TrainDB).filter(TrainDB.user_id == user_id).first()
         if not query:
             raise HTTPException(status_code=404, detail="User id not found in database.")
-        if query.train_status == DataLoaderStatus.COMPLETED:
-            model_path = query.model_path
-            if model_path and os.path.isfile(model_path):
-                return FileResponse(model_path, media_type="application/octet-stream", filename="ac_model.pt")
+        if query.status == Status.COMPLETED:
+            weights_path = query.weights
+            if weights_path and os.path.isfile(weights_path):
+                return FileResponse(weights_path, media_type="application/octet-stream", filename="ac_model.pth")
             else:
                 raise HTTPException(status_code=404, detail="Model not found in database.")
         else:
