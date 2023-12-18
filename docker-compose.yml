@@ -21,6 +21,7 @@ services:
     runtime: nvidia
     volumes:
       - ${DATA_DIR}:/data
+      - ${VIDEO_DIR}:/media/train_videos/
     depends_on:
       - postgres
       - rabbitmq
