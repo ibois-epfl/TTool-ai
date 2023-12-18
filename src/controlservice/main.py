@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 from sqlalchemy import func
 import uuid
+import re
 
 app = FastAPI()
 
@@ -22,13 +23,22 @@ app = FastAPI()
 def on_startup():
     init_db()
 
+def standard_label(input_label):
+    standard_label = input_label.lower()
+    standard_label = re.sub(r"[^\w\s]", " ", standard_label)
+    standard_label = re.sub(r"\s+", " ", standard_label)
+    standard_label = standard_label.strip()
+    standard_label = standard_label.replace(" ", "_")
+    return standard_label
+
 @app.post("/upload_videos", status_code=201)
 async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
     db_session = SessionLocal()
     try:
         try:
-            timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-            video_name = f"{label}-{timestamp}.{video.filename.split('.')[-1]}"
+            label = standard_label(label)
+            timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+            video_name = f"{label}_{timestamp}.{video.filename.split('.')[-1]}"
             label_dir = os.path.join(constants.DOCKER_VIDEO_DIR, label, video_name.split(".")[0])
             os.makedirs(label_dir, exist_ok=True)
         except Exception as e:
