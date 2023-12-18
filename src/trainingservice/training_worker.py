@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import pathlib
@@ -29,10 +30,12 @@ class TrainingDB(Base):
     max_epochs = sqlalchemy.Column(sqlalchemy.Integer)
     batch_size = sqlalchemy.Column(sqlalchemy.Integer)
 
+    user_id = sqlalchemy.Column(sqlalchemy.Integer)
+
     training_hash = sqlalchemy.Column(sqlalchemy.BigInteger, unique=True)
 
     status = sqlalchemy.Column(sqlalchemy.String, default=Status.PENDING)
-    logdir = sqlalchemy.Column(sqlalchemy.String)
+    log_dir = sqlalchemy.Column(sqlalchemy.String)
     weights = sqlalchemy.Column(sqlalchemy.String)
     trace_file = sqlalchemy.Column(sqlalchemy.String)
 
@@ -42,7 +45,12 @@ class TrainingParams:
         param_dict = json.loads(bstr.decode("utf-8"))
         self.max_epochs = param_dict["max_epochs"]
         self.batch_size = param_dict["batch_size"]
-        self.data_dirs = tuple(param_dict["data_dirs"])
+        data_dirs = param_dict["data_dirs"]
+        if isinstance(data_dirs[0], list):
+            # Turn list of lists into a single list of directories
+            data_dirs = itertools.chain.from_iterable(data_dirs)
+        self.data_dirs = tuple(data_dirs)
+        self.user_id = param_dict["user_id"]
 
     def __hash__(self):
         return hash((self.max_epochs, self.batch_size, *self.data_dirs))
@@ -65,11 +73,11 @@ class Callback:
         with sqlalchemy.orm.Session(self.engine) as session:
             training_entry = session.scalars(stmt).one()
             if log_dir is not None:
-                training_entry.log_dir = log_dir
+                training_entry.log_dir = str(log_dir)
             if trace_file is not None:
-                training_entry.trace_file = trace_file
+                training_entry.trace_file = str(trace_file)
             if weights is not None:
-                training_entry.weights = weights
+                training_entry.weights = str(weights)
             if status is not None:
                 training_entry.status = status
             session.commit()
@@ -81,6 +89,7 @@ class Callback:
             max_epochs=training_params.max_epochs,
             batch_size=training_params.batch_size,
             data_dirs=training_params.data_dirs,
+            user_id=training_params.user_id,
             training_hash=training_hash,
         )
         with sqlalchemy.orm.Session(self.engine) as session:
@@ -89,23 +98,24 @@ class Callback:
 
         log_dir = pathlib.Path(f"/data/{training_hash}")
         log_dir.mkdir()
-        self._add_info(training_hash, log_dir=log_dir)
-        # try:
+        self._add_info(training_hash, log_dir=str(log_dir))
         self._add_info(training_hash, status=Status.TRAINING)
-        weights_file, trace_file = training.train(
-            max_epochs=training_params.max_epochs,
-            batch_size=training_params.batch_size,
-            data_dirs=training_params.data_dirs,
-            log_dir=log_dir,
-        )
-        self._add_info(
-            training_hash,
-            status=Status.DONE,
-            weights=weights_file,
-            trace_file=trace_file,
-        )
-        # except Exception as e:
-        #     self._add_info(training_hash, status=Status.FAILED)
+        try:
+            weights_file, trace_file = training.train(
+                max_epochs=training_params.max_epochs,
+                batch_size=training_params.batch_size,
+                data_dirs=training_params.data_dirs,
+                log_dir=log_dir,
+            )
+            self._add_info(
+                training_hash,
+                status=Status.DONE,
+                weights=weights_file,
+                trace_file=trace_file,
+            )
+        except Exception as e:
+            self._add_info(training_hash, status=Status.FAILED)
+            print(f"Failed with {e}.")
 
     def close_connection(self):
         self.engine.dispose()
