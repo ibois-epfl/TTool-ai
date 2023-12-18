@@ -18,19 +18,19 @@ class Base(sqlalchemy.orm.DeclarativeBase):
 class Status(str, sqlalchemy.Enum):
     PENDING = "pending"
     TRAINING = "training"
-    DONE = "done"
+    COMPLETED = "completed"
     FAILED = "failed"
 
-
 class TrainingDB(Base):
-    __tablename__ = "trainings"
+    __tablename__ = "train"
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, index=True)
 
     data_dirs = sqlalchemy.Column(sqlalchemy.String)
     max_epochs = sqlalchemy.Column(sqlalchemy.Integer)
     batch_size = sqlalchemy.Column(sqlalchemy.Integer)
 
-    user_id = sqlalchemy.Column(sqlalchemy.Integer)
+    user_id = sqlalchemy.Column(sqlalchemy.String)
+    classes = sqlalchemy.Column(sqlalchemy.JSON)
 
     training_hash = sqlalchemy.Column(sqlalchemy.BigInteger, unique=True)
 
@@ -51,6 +51,7 @@ class TrainingParams:
             data_dirs = itertools.chain.from_iterable(data_dirs)
         self.data_dirs = tuple(data_dirs)
         self.user_id = param_dict["user_id"]
+        self.classes = param_dict["classes"]
 
     def __hash__(self):
         return hash((self.max_epochs, self.batch_size, *self.data_dirs))
@@ -90,6 +91,7 @@ class Callback:
             batch_size=training_params.batch_size,
             data_dirs=training_params.data_dirs,
             user_id=training_params.user_id,
+            classes=training_params.classes,
             training_hash=training_hash,
         )
         with sqlalchemy.orm.Session(self.engine) as session:
@@ -109,7 +111,7 @@ class Callback:
             )
             self._add_info(
                 training_hash,
-                status=Status.DONE,
+                status=Status.COMPLETED,
                 weights=weights_file,
                 trace_file=trace_file,
             )
