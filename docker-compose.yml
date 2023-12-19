@@ -4,7 +4,7 @@ services:
   control_api:
     build: ./src/controlservice
     ports:
-      - "8000:8000"
+      - "16666:8000"
     command: uvicorn main:app --host 0.0.0.0 --reload
     volumes:
       - ${VIDEO_DIR}:/media/train_videos/
