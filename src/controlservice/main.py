@@ -16,6 +16,7 @@ import json
 from sqlalchemy import func
 import uuid
 import re
+import shutil
 
 app = FastAPI()
 
@@ -56,7 +57,7 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
         try:
             new_video = VideoDB(
                     label=label,
-                    video_path=os.path.join(label_dir, video_name),
+                    video_path=target_path,
                     video_hash=video_hash,
                     data_dir=label_dir
                 )
@@ -64,10 +65,12 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
             db_session.commit()
         except Exception as e:
             db_session.rollback()
-            raise HTTPException(status_code=500, detail="Error while adding video to database")
-        except IntegrityError:
+            if label_dir and os.path.exists(label_dir):
+                shutil.rmtree(label_dir)
+            raise HTTPException(status_code=500, detail="Error while adding video to database. Video removed from the disk")
+        except IntegrityError as e:
             db_session.rollback()
-            print("A video with the same hash already exists.")
+            print("A video with the same hash already exists.", str(e))
 
         try:
             video_json = jsonable_encoder(new_video.video_path)
