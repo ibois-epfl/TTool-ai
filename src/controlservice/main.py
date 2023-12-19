@@ -162,9 +162,9 @@ def get_train_result(user_id: str):
         if not query:
             raise HTTPException(status_code=404, detail="User id not found in database.")
         if query.status == Status.COMPLETED:
-            weights_path = query.weights
-            if weights_path and os.path.isfile(weights_path):
-                return FileResponse(weights_path, media_type="application/octet-stream", filename="ac_model.pth")
+            ml_model = query.trace_file
+            if ml_model and os.path.isfile(ml_model):
+                return FileResponse(ml_model, media_type="application/octet-stream", filename="ac_model.pt")
             else:
                 raise HTTPException(status_code=404, detail="Model not found in database.")
         else:
