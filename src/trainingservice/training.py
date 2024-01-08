@@ -15,7 +15,7 @@ import tqdm
 class TransferEfficientNet(nn.Module):
     def __init__(
         self,
-        num_classes=14,
+        num_classes,
         **kwargs,
     ):
         """
@@ -87,7 +87,7 @@ class ToolDataset(torch.utils.data.Dataset):
 
         # Define the function used to extract the ground truth tool name
         # from the file name
-        self.get_tool = lambda x: x.parents[1].stem
+        self.get_tool = lambda x: x.parents[2].stem
 
     def __len__(self):
         return len(self.img_paths)
@@ -172,7 +172,7 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
         dataset.transform = normalization_transform
         dataset.target_transform = label_transform
 
-    model = TransferEfficientNet(num_classes=10)
+    model = TransferEfficientNet(num_classes=len(label_list))
     model = model.to(device)
 
     optimizer = torch.optim.SGD(
