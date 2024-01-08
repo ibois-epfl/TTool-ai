@@ -138,6 +138,8 @@ class TrainingWorker:
             host=host,
             port=port,
             credentials=credentials,
+            heartbeat=600,
+            blocked_connection_timeout=300
         )
         self.connection = pika.BlockingConnection(connection_params)
         self.channel = self.connection.channel()
@@ -145,7 +147,7 @@ class TrainingWorker:
 
     def start_consuming(self, callback):
         self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(queue=self.queue, on_message_callback=callback)
+        self.channel.basic_consume(queue=self.queue, on_message_callback=callback, auto_ack=True)
         self.channel.start_consuming()
 
     def close_connection(self):
