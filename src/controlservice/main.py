@@ -9,7 +9,6 @@ import os
 import pika
 import hashlib
 from fastapi import UploadFile, File
-from sqlalchemy.exc import IntegrityError
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 import json
@@ -20,9 +19,11 @@ import shutil
 
 app = FastAPI()
 
+
 @app.on_event("startup")
 def on_startup():
     init_db()
+
 
 def standard_label(input_label):
     standard_label = input_label.lower()
@@ -31,6 +32,7 @@ def standard_label(input_label):
     standard_label = standard_label.strip()
     standard_label = standard_label.replace(" ", "_")
     return standard_label
+
 
 @app.post("/upload_videos", status_code=201)
 async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
@@ -43,34 +45,37 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
             label_dir = os.path.join(constants.DOCKER_VIDEO_DIR, label, video_name.split(".")[0])
             os.makedirs(label_dir, exist_ok=True)
         except Exception as e:
-            raise HTTPException(status_code=500, detail="Error while creating video directory")
+            print("Error while creating video directory: ", str(e))
+            return JSONResponse(content={"message": "Error while creating video directory"},
+                                status_code=500)
 
         target_path = os.path.join(label_dir, video_name)
         with open(target_path, "wb") as video_file:
             content = await video.read()
             video_file.write(content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error while saving video")
+        print("Error while saving video: ", str(e))
+        return JSONResponse(content={"message": "Error while saving video"},
+                            status_code=500)
 
     video_hash = hashlib.sha256(content).hexdigest()
     try:
         try:
             new_video = VideoDB(
-                    label=label,
-                    video_path=target_path,
-                    video_hash=video_hash,
-                    data_dir=label_dir
-                )
+                label=label,
+                video_path=target_path,
+                video_hash=video_hash,
+                data_dir=label_dir
+            )
             db_session.add(new_video)
             db_session.commit()
         except Exception as e:
             db_session.rollback()
             if label_dir and os.path.exists(label_dir):
                 shutil.rmtree(label_dir)
-            raise HTTPException(status_code=500, detail="Error while adding video to database. Video removed from the disk")
-        except IntegrityError as e:
-            db_session.rollback()
             print("A video with the same hash already exists.", str(e))
+            return JSONResponse(content={"message": "This video is already exists!"},
+                                status_code=409)
 
         try:
             video_json = jsonable_encoder(new_video.video_path)
@@ -80,15 +85,64 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
                                                   properties=pika.BasicProperties(delivery_mode=2))
         except Exception as e:
             print("Error while sending message to rabbitmq queue: ", str(e))
+            return JSONResponse(content={"message": "Error while sending video for further processing"},
+                                status_code=500)
 
         video_id = new_video.id
-        return JSONResponse(content={"video_id": video_id,
-                                     "message": "Video uploaded successfully."},
+        return JSONResponse(content={"VIDEO_ID": video_id,
+                                     "message": "Video uploaded successfully. "
+                                                "Use the provided VIDEO_ID to check status or delete the video."},
                             status_code=200)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("Server Internal Error: ", str(e))
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again.")
     finally:
         db_session.close()
+
+
+@app.get("/check_upload_video_status/{video_id}", status_code=200)
+def check_upload_video_status(video_id: int):
+    db_session = SessionLocal()
+    try:
+        query = db_session.query(VideoDB).filter(VideoDB.id == video_id).first()
+        if not query:
+            return JSONResponse(content={"message": "Video id not found in database."}, status_code=404)
+        if query.upload_status == Status.COMPLETED:
+            return JSONResponse(content={"message": "Video uploaded successfully."}, status_code=200)
+        elif query.upload_status == Status.FAILED:
+            return JSONResponse(content={"message": "Video upload failed. Please try again."}, status_code=500)
+        elif query.upload_status == Status.PROCESSING:
+            return JSONResponse(content={"message": "Video is being processed. Please wait."}, status_code=202)
+        else:
+            return JSONResponse(content={"message": "Video upload pending. Please wait."}, status_code=202)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again.")
+    finally:
+        db_session.close()
+
+
+@app.delete("/delete_video/{video_id}", status_code=200)
+def delete_video(video_id: int):
+    db_session = SessionLocal()
+    try:
+        query = db_session.query(VideoDB).filter(VideoDB.id == video_id).first()
+        if not query:
+            return JSONResponse(content={"message": "Video id not found in database."}, status_code=404)
+        if query.upload_status == Status.COMPLETED or query.upload_status == Status.FAILED:
+            if os.path.exists(query.data_dir):
+                shutil.rmtree(query.data_dir)
+            db_session.delete(query)
+            db_session.commit()
+            return JSONResponse(content={"message": "Video deleted successfully."}, status_code=200)
+        else:
+            return JSONResponse(content={"message": "Video is being processed. Please wait. "
+                                                    "You can delete the video only when the status is completed"},
+                                status_code=202)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again.")
+    finally:
+        db_session.close()
+
 
 @app.get("/get_classes_available", status_code=200)
 def get_classes_available():
@@ -97,27 +151,35 @@ def get_classes_available():
         labels = db_session.query(VideoDB.label).filter(VideoDB.upload_status == Status.COMPLETED).distinct().all()
         labels = [label[0] for label in labels]
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error while getting labels from database.")
+        print("Error while getting labels from database: ", str(e))
+        return JSONResponse(content={"message": "Error while getting classes from database"}, status_code=500)
     finally:
         db_session.close()
-    return labels
+    return sorted(labels)
 
-
-@app.post("/set_train_config", status_code=201)
-def set_train_config(config: TrainConfig):
+@app.post("/train_model", status_code=201)
+def train_model(config: TrainConfig):
     db_session = SessionLocal()
     try:
         label_dirs = []
         results = (db_session.query
-                   (VideoDB.label,func.array_agg(VideoDB.data_dir),)
+                   (VideoDB.label, func.array_agg(VideoDB.data_dir), )
                    .filter(VideoDB.label.in_(config.classes)).group_by(VideoDB.label).all())
         for l, dir in results:
             label_dirs.append(dir)
     except Exception as e:
-        print("Error while getting label directories from database: ", str(e))
         raise HTTPException(status_code=500, detail="Set Config Error")
 
     try:
+        if not label_dirs:
+            return JSONResponse(content={"message": "No data for training."},
+                                status_code=404)
+        if config.epochs <= 0:
+            return JSONResponse(content={"message": "Max epochs must be positive."},
+                                status_code=400)
+        if config.batch_size <= 0:
+            return JSONResponse(content={"message": "Batch size must be positive."},
+                                status_code=400)
         user_id = uuid.uuid4().hex
         train_config = {
             "user_id": user_id,
@@ -133,41 +195,61 @@ def set_train_config(config: TrainConfig):
                                               body=message,
                                               properties=pika.BasicProperties(delivery_mode=2))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error while sending message to rabbitmq queue")
-
-    return JSONResponse(content={"message": "Train config set successfully. YOUR USER ID: " + str(user_id)},
+        print("Error while sending message to rabbitmq queue: ", str(e))
+        return JSONResponse(content={"message": "Error while starting the training. Please try again."},
+                            status_code=500)
+    return JSONResponse(content={"message": f"Training has started successfully. USER_ID: {user_id}. " 
+                                            "Please save the USER_ID to check the status of the training "
+                                            "and get the train model"},
                         status_code=200)
 
 
-@app.get("/get_train_status/{user_id}", status_code=200)
-def get_train_status(user_id: str):
+@app.get("/check_train_status/{user_id}", status_code=200)
+def check_train_status(user_id: str):
     db_session = SessionLocal()
     try:
         query = db_session.query(TrainDB).filter(TrainDB.user_id == user_id).first()
         if query:
             train_status = query.status
         else:
-            raise HTTPException(status_code=404, detail="User id not found in database.")
+            print("User id not found in database.")
+            return JSONResponse(content={"message": "User id not found in database."}, status_code=404)
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error while getting train status from database.")
+        print("Error while getting train status from database: ", str(e))
+        return JSONResponse(content={"message": "Error while getting train status from database."}, status_code=500)
     finally:
         db_session.close()
-    return train_status
 
-@app.get("/get_train_result/{user_id}", status_code=200)
-def get_train_result(user_id: str):
+    if train_status == Status.COMPLETED:
+        return JSONResponse(content={"message": "Train completed successfully."}, status_code=200)
+    elif train_status == Status.FAILED:
+        return JSONResponse(content={"message": "Train failed. Please try again."}, status_code=500)
+    elif train_status == Status.PROCESSING:
+        return JSONResponse(content={"message": "Train is being processed. Please wait."}, status_code=202)
+    else:
+        return JSONResponse(content={"message": "Train pending. Please wait."}, status_code=202)
+
+
+@app.get("/get_train_model/{user_id}", status_code=200)
+def get_train_model(user_id: str):
     db_session = SessionLocal()
     try:
         query = db_session.query(TrainDB).filter(TrainDB.user_id == user_id).first()
         if not query:
-            raise HTTPException(status_code=404, detail="User id not found in database.")
+            print("User id not found in database.")
+            return JSONResponse(content={"message": "User id not found in database."}, status_code=404)
         if query.status == Status.COMPLETED:
             ml_model = query.trace_file
             if ml_model and os.path.isfile(ml_model):
                 return FileResponse(ml_model, media_type="application/octet-stream", filename="ac_model.pt")
             else:
-                raise HTTPException(status_code=404, detail="Model not found in database.")
+                print("Model not found in database.")
+                return JSONResponse(content={"message": "Model not found in database."}, status_code=404)
         else:
-            raise HTTPException(status_code=404, detail="Train not completed yet.")
+            print("Train not completed yet.")
+            return JSONResponse(content={"message": "Train not completed yet. Please wait."}, status_code=404)
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Get Train Result API Error.")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again.")
+
+
+
