@@ -33,8 +33,8 @@ def process_video(path: pathlib.Path):
     directory = path.parents[0]
     train_dir = directory / "train"
     val_dir = directory / "val"
-    train_dir.mkdir()
-    val_dir.mkdir()
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(val_dir, exist_ok=True)
     cap = cv2.VideoCapture(str(path))
 
     if not cap.isOpened():
@@ -104,6 +104,8 @@ class DatasetWorker:
             host=host,
             port=port,
             credentials=credentials,
+            heartbeat=600,
+            blocked_connection_timeout=300
         )
         self.connection = pika.BlockingConnection(connection_params)
         self.channel = self.connection.channel()

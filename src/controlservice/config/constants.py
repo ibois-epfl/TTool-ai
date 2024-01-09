@@ -1,2 +1,2 @@
 
-SAVE_VIDEO_PATH = "/media/train_videos/"
+DOCKER_VIDEO_DIR = "/media/train_videos/"
