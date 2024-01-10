@@ -1,44 +1,6 @@
 version: '3.8'
 
 services:
-  control_api:
-    build: ./src/controlservice
-    ports:
-      - "16666:8000"
-    command: uvicorn main:app --host 0.0.0.0 --reload
-    volumes:
-      - ${VIDEO_DIR}:/media/train_videos/
-      - ${DATA_DIR}:/data
-    depends_on:
-      - postgres
-      - rabbitmq
-    env_file:
-      - .env
-
-  training_worker:
-    build: ./src/trainingservice
-    command: python3 training_worker.py
-    runtime: nvidia
-    volumes:
-      - ${DATA_DIR}:/data
-      - ${VIDEO_DIR}:/media/train_videos/
-    depends_on:
-      - postgres
-      - rabbitmq
-    env_file:
-      - .env
-
-  dataset_worker:
-    build: ./src/datasetservice
-    command: python dataset_worker.py
-    volumes:
-      - ${DATA_DIR}:/data
-      - ${VIDEO_DIR}:/media/train_videos/
-    depends_on:
-      - postgres
-      - rabbitmq
-    env_file:
-      - .env
 
   rabbitmq:
     image: "rabbitmq:management"
@@ -58,3 +20,46 @@ services:
       - ${POSTGRES_DIR}:/var/lib/postgresql/data
     env_file:
       - .env
+
+  control_api:
+    build: ./src/controlservice
+    ports:
+      - "16666:8000"
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    volumes:
+      - ${VIDEO_DIR}:/media/train_videos/
+      - ${DATA_DIR}:/data
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
+    restart: always
+
+  training_worker:
+    build: ./src/trainingservice
+    command: python3 training_worker.py
+    runtime: nvidia
+    volumes:
+      - ${DATA_DIR}:/data
+      - ${VIDEO_DIR}:/media/train_videos/
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
+    restart: always
+
+  dataset_worker:
+    build: ./src/datasetservice
+    command: python dataset_worker.py
+    volumes:
+      - ${DATA_DIR}:/data
+      - ${VIDEO_DIR}:/media/train_videos/
+    depends_on:
+      - postgres
+      - rabbitmq
+    env_file:
+      - .env
+    restart: always
+
