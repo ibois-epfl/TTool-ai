@@ -236,7 +236,7 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
             batch_correct = (predictions == labels).sum().item()
             train_correct += batch_correct
 
-        train_accuracy = train_correct / len(train_loader)
+        train_accuracy = train_correct / len(train_loader.dataset)
         writer.add_scalar(
             "Accuracy/Train", train_accuracy, (epoch + 1) * len(train_loader)
         )
@@ -261,7 +261,7 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
                 val_correct += (predictions == labels).sum().item()
 
         average_val_loss = val_loss / len(val_loader)
-        val_accuracy = val_correct / len(val_loader)
+        val_accuracy = val_correct / len(val_loader.dataset)
         writer.add_scalar("Loss/Validation", average_val_loss, epoch)
         writer.add_scalar("Accuracy/Validation", val_accuracy, epoch)
 
