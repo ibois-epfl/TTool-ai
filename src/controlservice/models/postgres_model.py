@@ -36,3 +36,4 @@ class TrainDB(Base):
     log_dir = sqlalchemy.Column(sqlalchemy.String)
     weights = sqlalchemy.Column(sqlalchemy.String)
     trace_file = sqlalchemy.Column(sqlalchemy.String)
+    label_map_file = sqlalchemy.Column(sqlalchemy.String)
