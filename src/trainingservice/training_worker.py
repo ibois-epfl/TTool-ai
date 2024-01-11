@@ -38,6 +38,7 @@ class TrainingDB(Base):
     log_dir = sqlalchemy.Column(sqlalchemy.String)
     weights = sqlalchemy.Column(sqlalchemy.String)
     trace_file = sqlalchemy.Column(sqlalchemy.String)
+    label_map_file = sqlalchemy.Column(sqlalchemy.String)
 
 
 class TrainingParams:
@@ -66,7 +67,7 @@ class Callback:
         Base.metadata.create_all(self.engine)
 
     def _add_info(
-        self, training_hash, log_dir=None, trace_file=None, weights=None, status=None
+        self, training_hash, log_dir=None, trace_file=None, label_map_file=None, weights=None, status=None
     ):
         stmt = sqlalchemy.select(TrainingDB).where(
             TrainingDB.training_hash == training_hash
@@ -79,6 +80,8 @@ class Callback:
                 training_entry.trace_file = str(trace_file)
             if weights is not None:
                 training_entry.weights = str(weights)
+            if label_map_file is not None:
+                training_entry.label_map_file = str(label_map_file)
             if status is not None:
                 training_entry.status = status
             session.commit()
@@ -103,7 +106,7 @@ class Callback:
         self._add_info(training_hash, log_dir=str(log_dir))
         self._add_info(training_hash, status=Status.TRAINING)
         try:
-            weights_file, trace_file = training.train(
+            weights_file, trace_file, label_map_file = training.train(
                 max_epochs=training_params.max_epochs,
                 batch_size=training_params.batch_size,
                 data_dirs=training_params.data_dirs,
@@ -114,6 +117,7 @@ class Callback:
                 status=Status.COMPLETED,
                 weights=weights_file,
                 trace_file=trace_file,
+                label_map_file=label_map_file,
             )
         except Exception as e:
             self._add_info(training_hash, status=Status.FAILED)
