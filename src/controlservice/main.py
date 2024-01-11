@@ -16,6 +16,8 @@ from sqlalchemy import func
 import uuid
 import re
 import shutil
+import zipfile
+from tempfile import NamedTemporaryFile
 
 app = FastAPI()
 
@@ -227,10 +229,16 @@ def get_train_model(user_id: str):
             return JSONResponse(content={"message": "User id not found in database."}, status_code=404)
         if query.status == Status.COMPLETED:
             ml_model = query.trace_file
-            if ml_model and os.path.isfile(ml_model):
-                return FileResponse(ml_model, media_type="application/octet-stream", filename="ac_model.pt")
+            label_map_file = query.label_map_file
+            if ml_model and label_map_file and os.path.isfile(ml_model) and os.path.isfile(label_map_file):
+                with NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
+                    with zipfile.ZipFile(temp_zip, 'w') as zipf:
+                        zipf.write(ml_model, "efficientnet.pt")
+                        zipf.write(label_map_file, os.path.basename(label_map_file))
+                    temp_zip_path = temp_zip.name
+                return FileResponse(temp_zip_path, media_type="application/zip", filename="trained_model_and_labels.zip")
             else:
-                return JSONResponse(content={"message": "Model not found in database."}, status_code=404)
+                return JSONResponse(content={"message": "Model or Label Map file not found in database."}, status_code=404)
         else:
             return JSONResponse(content={"message": "Train not completed yet. Please wait."}, status_code=404)
     except Exception as e:
