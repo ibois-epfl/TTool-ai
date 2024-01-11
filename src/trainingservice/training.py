@@ -157,6 +157,14 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     label_list = itertools.chain.from_iterable(label_list)
     label_list = list(set(label_list))
 
+    label_mapping = {label: index for index, label in enumerate(label_list)}
+    label_mapping_str = "\n".join(f"{label}: {index}" for label, index in label_mapping.items())
+    label_map_file = log_dir / "label_map.txt"
+
+    with open(label_map_file, "w") as f:
+        f.write(label_mapping_str)
+
+
     def label_transform(label):
         """
         Converts the name of a tool into a one hot
@@ -278,4 +286,4 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
 
     weights_file = list(checkpoint_dir.glob("min_val_loss*.pth"))[0]
     trace_file = list(checkpoint_dir.glob("min_val_loss*.pt"))[0]
-    return weights_file, trace_file
+    return weights_file, trace_file, label_map_file
