@@ -158,11 +158,11 @@ def train(data_dirs, max_epochs, batch_size, log_dir):
     label_list = list(set(label_list))
 
     label_mapping = {label: index for index, label in enumerate(label_list)}
-    label_mapping_str = "\n".join(f"{label}: {index}" for label, index in label_mapping.items())
-    label_map_file = log_dir / "label_map.txt"
+    label_list_str = "\n".join(label for label in label_mapping.keys())
+    label_map_file = log_dir / "labels.txt"
 
     with open(label_map_file, "w") as f:
-        f.write(label_mapping_str)
+        f.write(label_list_str)
 
 
     def label_transform(label):
