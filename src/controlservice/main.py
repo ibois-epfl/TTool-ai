@@ -214,7 +214,7 @@ def check_train_status(user_id: str):
         return JSONResponse(content={"message": "Train completed successfully."}, status_code=200)
     elif train_status == Status.FAILED:
         return JSONResponse(content={"message": "Train failed. Please try again."}, status_code=500)
-    elif train_status == Status.PROCESSING:
+    elif train_status == Status.TRAINING:
         return JSONResponse(content={"message": "Train is being processed. Please wait."}, status_code=202)
     else:
         return JSONResponse(content={"message": "Train pending. Please wait."}, status_code=202)

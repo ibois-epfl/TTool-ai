@@ -6,6 +6,7 @@ from config.postgres_config import Base
 class Status(Enum):
     PENDING = 'pending'
     PROCESSING = 'processing'
+    TRAINING = 'training'
     COMPLETED = 'completed'
     FAILED = 'failed'
 
