@@ -26,6 +26,7 @@ class VideoDB(Base):
     label = sqlalchemy.Column(sqlalchemy.String)
     video_path = sqlalchemy.Column(sqlalchemy.String)
     video_hash = sqlalchemy.Column(sqlalchemy.String, unique=True)
+    data_dir = sqlalchemy.Column(sqlalchemy.String)
     upload_status = sqlalchemy.Column(sqlalchemy.String, default=Status.PENDING)
 
 
