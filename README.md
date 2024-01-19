@@ -1,6 +1,13 @@
+
 # TTool-AI
 
-TTool-AI automates the integration of new tools into AC (Augmented Carpentry), enhancing efficiency and simplifying the process.
+🌲 TTool-AI is developed at the [**Laboratory for Timber Construction**](https://www.epfl.ch/labs/ibois/) (director: Prof.Yves Weinand) with the support of the [**EPFL Center for Imaging**](https://imaging.epfl.ch/), at [**EPFL**](https://www.epfl.ch/en/), Lausanne, Switzerland. The project is part of the [**Augmented Carpentry Research**](https://www.epfl.ch/labs/ibois/augmented-carpentry/).
+
+
+🤖 TTool-AI automates the integration of new tools into AC (Augmented Carpentry), enhancing efficiency and simplifying the process. It is developed in Python and relies on the [**FastAPI**](https://fastapi.tiangolo.com/) framework. The project is containerized with [**Docker**](https://www.docker.com/) and [**Docker Compose**](https://docs.docker.com/compose/). The Training Service is based on [**PyTorch**](https://pytorch.org/). The project is developed and tested on Linux (Ubuntu 22.04) with NVIDIA GPUs.
+
+
+🚀 For a quick hands-on start or more details, check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki).
 
 ## System dependencies
 
