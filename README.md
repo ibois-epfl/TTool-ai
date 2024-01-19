@@ -36,17 +36,17 @@ cd TTool-ai/
 ```
 Run Docker Compose to build the project in the background:
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 Run Docker Compose to build the project in the foreground:
 ```bash
-docker-compose up
+docker compose up
 ```
    
 ### Check the status of the containers:
 
 ```bash
-docker-compose ps -a
+docker compose ps -a
 ```
 ### Access the Service:
 Once everything is up and running, you can access the FastAPI interface at:
