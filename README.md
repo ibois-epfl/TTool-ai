@@ -29,7 +29,7 @@ Visit the EPFL server at: http://128.178.91.106:16666/docs
 
 2. **Follow the instructions**:
 
-Check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki) for **Users** for more details.
+Check out our [Wiki for Users](https://github.com/ibois-epfl/TTool-ai/wiki/TTool%E2%80%90ai-Guide-for-user) for more details.
 
 
 ### For Developers:
