@@ -56,3 +56,4 @@ Once everything is up and running, you can access the FastAPI interface at:
 - If built on localhost: http://localhost:16666/docs
 - If built on a remote server: Use the appropriate IP address.
 
+    For more details, check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki).
