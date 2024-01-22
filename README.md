@@ -9,17 +9,6 @@
 
 🚀 For a quick hands-on start or more details, check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki).
 
-## System dependencies
-
-1. **Install Docker and Docker Compose**:
-
-    Ensure you have Docker and Docker Compose installed on your system with **NVIDIA Runtime support** for the Training Service.
-
-2. **Environment Variables**:
-    TTool-AI relies on environment variables defined in a **.env file**. 
-    Make sure to set up this file as per the project's requirements.
-
-
 ## Getting Started
 
 ### For Users:
@@ -34,14 +23,23 @@ Check out our [Wiki for Users](https://github.com/ibois-epfl/TTool-ai/wiki/TTool
 
 ### For Developers:
 
-1. **Make sure you have the system dependencies installed**
-2. **Clone the repository**:
+1. **Install Docker and Docker Compose**:
+
+    Ensure you have Docker and Docker Compose installed on your system with **NVIDIA Runtime support** for the Training Service.
+
+2. **Environment Variables**:
+    TTool-AI relies on environment variables defined in a **.env file**. 
+    Make sure to set up this file as per the project's requirements. 
+
+    **Important**: The .env file that is included in the repository is tailored for the EPFL server. You might have to modify the values for **${DATA_DIR}**, **${VIDEO_DIR}** and **${POSTGRES_DIR}** to match your system's directory structure.
+
+3. **Clone the repository**:
 
     ```bash
     git clone git@github.com:ibois-epfl/TTool-ai.git
     ```
 
-3. **Run the project**:
+4. **Run the project**:
     Navigate to the project's root directory and run the following command:
     ```bash
     cd TTool-ai/
@@ -51,7 +49,8 @@ Check out our [Wiki for Users](https://github.com/ibois-epfl/TTool-ai/wiki/TTool
     docker compose up
     ```
 
-4. **Access the Service**:
+5. **Access the Service**:
+
 Once everything is up and running, you can access the FastAPI interface at:
 - If built on localhost: http://localhost:16666/docs
 - If built on a remote server: Use the appropriate IP address.
