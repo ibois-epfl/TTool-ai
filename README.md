@@ -22,36 +22,36 @@
 
 ## Getting Started
 
-## For Users:
-### 1. Go to the specified URL:
+### For Users:
+1. **Go to the specified URL**:
 
 Visit the EPFL server at: http://128.178.91.106:16666/docs
 
-### 2. Follow the instructions:
+2. **Follow the instructions**:
 
 Check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki) for more details.
 
 
-## For Developers:
+### For Developers:
 
-### 1. Make sure you have the system dependencies installed.
-### 2. Clone the repository:
+1. **Make sure you have the system dependencies installed**
+2. **Clone the repository**:
 
-```bash
-git clone git@github.com:ibois-epfl/TTool-ai.git
-```
+    ```bash
+    git clone git@github.com:ibois-epfl/TTool-ai.git
+    ```
 
-### 3. Run the project:
-Navigate to the project's root directory and run the following command:
-```bash
-cd TTool-ai/
-```
-Run Docker Compose to build the project in the foreground:
-```bash
-docker compose up
-```
+3. **Run the project**:
+    Navigate to the project's root directory and run the following command:
+    ```bash
+    cd TTool-ai/
+    ```
+    Run Docker Compose to build the project in the foreground:
+    ```bash
+    docker compose up
+    ```
 
-### 4. Access the Service:
+4. **Access the Service**:
 Once everything is up and running, you can access the FastAPI interface at:
 - If built on localhost: http://localhost:16666/docs
 - If built on a remote server: Use the appropriate IP address.
