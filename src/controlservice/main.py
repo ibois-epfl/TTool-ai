@@ -1,10 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
-from models.postgres_model import VideoDB, Status, TrainDB
-from models.train_config_api import TrainConfig
-from config.postgres_config import SessionLocal, init_db
-from config.rabbit_config import producer_rabbit_channel, RABBITMQ_DATA_QUEUE, RABBITMQ_TRAIN_QUEUE
-import config.constants as constants
 import os
 import pika
 import hashlib
@@ -18,6 +13,11 @@ import re
 import shutil
 import zipfile
 from tempfile import NamedTemporaryFile
+from models import VideoDB, Status, TrainDB
+from models import TrainConfig
+from config import SessionLocal, init_db
+from config import producer_rabbit_channel, RABBITMQ_DATA_QUEUE, RABBITMQ_TRAIN_QUEUE
+from config import DOCKER_VIDEO_DIR
 
 app = FastAPI()
 
@@ -41,7 +41,7 @@ async def upload_videos(video: UploadFile = File(...), label: str = File(...)):
             label = standard_label(label)
             timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
             video_name = f"{label}_{timestamp}.{video.filename.split('.')[-1]}"
-            label_dir = os.path.join(constants.DOCKER_VIDEO_DIR, label, video_name.split(".")[0])
+            label_dir = os.path.join(DOCKER_VIDEO_DIR, label, video_name.split(".")[0])
             os.makedirs(label_dir, exist_ok=True)
         except Exception as e:
             return JSONResponse(content={"message": "Error while creating video directory"},
