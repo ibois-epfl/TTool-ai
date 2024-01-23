@@ -142,7 +142,7 @@ class TrainingWorker:
             host=host,
             port=port,
             credentials=credentials,
-            heartbeat=600,
+            heartbeat=0,
             blocked_connection_timeout=300
         )
         self.connection = pika.BlockingConnection(connection_params)

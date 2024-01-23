@@ -12,7 +12,7 @@ RABBITMQ_TRAIN_QUEUE = os.getenv('RABBITMQ_TRAIN_QUEUE')
 producer_credentials = pika.PlainCredentials(RABBITMQ_DEFAULT_USER, RABBITMQ_DEFAULT_PASS)
 producer_parameters = pika.ConnectionParameters(
                 host='rabbitmq', port=RABBITMQ_PORT, credentials=producer_credentials,
-                heartbeat=600, blocked_connection_timeout=300)
+                heartbeat=0, blocked_connection_timeout=300)
 
 producer_rabbit_connection = pika.BlockingConnection(producer_parameters)
 producer_rabbit_channel = producer_rabbit_connection.channel()
