@@ -56,3 +56,8 @@ Once everything is up and running, you can access the FastAPI interface at:
 - If built on a remote server: Use the appropriate IP address.
 
     For more details, check out our [Wiki](https://github.com/ibois-epfl/TTool-ai/wiki).
+
+## Caveats
+
+For now the server can be accessed only by EPFL users via VPN.
+We are planning to make the server accessible from outside the EPFL domaine.
