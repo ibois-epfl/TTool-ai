@@ -1,6 +1,10 @@
 
 # TTool-AI
 
+<p align="center">
+    <img src="https://github.com/ibois-epfl/TTool-ai/actions/workflows/tests.yml/badge.svg">
+</p>
+
 🌲 TTool-AI is developed at the [**Laboratory for Timber Construction**](https://www.epfl.ch/labs/ibois/) (director: Prof.Yves Weinand) with the support of the [**EPFL Center for Imaging**](https://imaging.epfl.ch/), at [**EPFL**](https://www.epfl.ch/en/), Lausanne, Switzerland. The project is part of the [**Augmented Carpentry Research**](https://www.epfl.ch/labs/ibois/augmented-carpentry/).
 
 
