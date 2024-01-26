@@ -2,6 +2,7 @@
 # TTool-AI
 
 <p align="center">
+    <a href="https://zenodo.org/doi/10.5281/zenodo.10571550"><img src="https://zenodo.org/badge/709309914.svg" alt="DOI"></a>
     <img src="https://github.com/ibois-epfl/TTool-ai/actions/workflows/tests.yml/badge.svg">
 </p>
 
